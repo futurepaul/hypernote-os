@@ -1,6 +1,6 @@
 import { useEffect, useRef, type PropsWithChildren } from "react";
 import { useAtom, useSetAtom, useAtomValue } from 'jotai'
-import { windowPosAtom, windowZAtom, bringWindowToFrontAtom } from '../state/appAtoms'
+import { windowPosAtom, windowZAtom, bringWindowToFrontAtom, activeWindowAtom } from '../state/appAtoms'
 
 export function DraggableWindow({ id, title, children, contentClassName, onClose }: PropsWithChildren<{ id: string; title?: string; contentClassName?: string; onClose?: () => void }>) {
   const dragRef = useRef<HTMLDivElement | null>(null);
@@ -46,7 +46,9 @@ export function DraggableWindow({ id, title, children, contentClassName, onClose
     document.body.style.userSelect = "none";
   }
 
-  const titlebarClass = "bg-[var(--title-bg)] text-[var(--title-fg)]";
+  const activeId = useAtomValue(activeWindowAtom) as string | null
+  const isActive = activeId === id
+  const titlebarClass = `${isActive ? 'bg-[var(--title-bg)]' : 'bg-[var(--title-bg-inactive)]'} text-[var(--title-fg)]`
 
   return (
     <div

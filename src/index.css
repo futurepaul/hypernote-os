@@ -1,14 +1,16 @@
 @import "tailwindcss";
 
 :root {
-  --title-bg: #E19959; /* warm orange (complements teal) */
-  --title-bg-light: #F2C08A; /* lighter variant for accents */
+  /* Palette inspired by reference */
+  --title-bg: #EDA870; /* primary active titlebar */
+  --title-bg-inactive: #999999; /* inactive titlebar */
+  --title-bg-light: #F2C08A; /* lighter accent for selections */
   --title-fg: #111111;
-  --teal: #2C5F66; /* deep teal */
-  --chrome-bg: #c9c3bb; /* window chrome */
-  --win-bg: #d8d2c9; /* content surface */
+  --accent: #4992A7; /* complementary teal */
+  --chrome-bg: #C6B2A8; /* base chrome */
+  --win-bg: #C6B2A8; /* content surface */
   --bevel-light: #ffffff;
-  --bevel-dark: #6b7280; /* slate-ish */
+  --bevel-dark: #6e6e6e;
 }
 
 /* Page background: tile a 4x900 PNG horizontally with no scaling */
