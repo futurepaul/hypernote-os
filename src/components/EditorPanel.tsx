@@ -1,12 +1,15 @@
 // @ts-nocheck
 import { useEffect, useMemo, useRef, useState } from "react";
 import OverType from "overtype";
-import { useAtom } from 'jotai'
-import { docsAtom } from '../state/appAtoms'
+import { useAtom, useSetAtom } from 'jotai'
+import { docsAtom, openWindowsAtom, openWindowAtom } from '../state/appAtoms'
 import { parseFrontmatterName } from "../state/docs";
+import { getDefaultDocs, saveUserDocs, loadUserDocs, clearUserDocs, isDefaultDocId } from '../state/docs'
 
 export function EditorPanel() {
   const [docs, setDocs] = useAtom(docsAtom)
+  const openWin = useSetAtom(openWindowAtom)
+  const setOpenWindows = useSetAtom(openWindowsAtom)
   const files = useMemo(() => ["profile", "wallet", "clock", "apps"], [])
   const [current, setCurrent] = useState<string>(files[0])
   const [value, setValue] = useState<string>(docs[current as keyof typeof docs] || "")
@@ -38,13 +41,36 @@ export function EditorPanel() {
   }, [value])
 
   function save() {
-    setDocs({ ...docs, [current]: value })
+    const nextDocs = { ...docs, [current]: value }
+    setDocs(nextDocs)
+    // Persist only non-default docs
+    if (!isDefaultDocId(current)) {
+      const userDocs = loadUserDocs()
+      saveUserDocs({ ...userDocs, [current]: value })
+    }
+  }
+
+  function newDoc() {
+    const id = prompt('New app id (letters, numbers, dashes):', 'my-app')?.trim()
+    if (!id) return
+    if (!/^[a-z0-9\-]+$/i.test(id)) { alert('Invalid id'); return }
+    if (docs[id as keyof typeof docs]) { alert('An app with that id already exists'); return }
+    const template = `---\nname: ${id}\nicon: folder.png\n---\nHello from ${id}.\n`
+    const next = { ...docs, [id]: template }
+    setDocs(next)
+    // Persist new app
+    const userDocs = loadUserDocs()
+    saveUserDocs({ ...userDocs, [id]: template })
+    setCurrent(id)
+    setValue(template)
+    // Open the new window
+    try { openWin(id) } catch {}
   }
 
   return (
-    <div className="flex h-[420px] w-[760px]">
+    <div className="flex h-[460px] w-[820px]">
       {/* Sidebar */}
-      <div className="w-48 border-r border-[var(--bevel-dark)] bg-[var(--chrome-bg)]">
+      <div className="w-52 border-r border-[var(--bevel-dark)] bg-[var(--chrome-bg)]">
         {files.map(fid => {
           const name = parseFrontmatterName(docs[fid as keyof typeof docs] || "") || fid
           const active = fid === current
@@ -63,26 +89,41 @@ export function EditorPanel() {
       </div>
       {/* Editor */}
       <div className="flex-1 flex flex-col">
+        {/* Menubar */}
+        <div className="flex items-center gap-2 px-2 py-1 bg-[var(--accent)] text-white border-b border-[var(--bevel-dark)]">
+          <div className="font-semibold text-sm mr-2">File</div>
+          <button onClick={newDoc} className="px-2 py-0.5 text-sm bg-[var(--win-bg)] text-gray-900 border border-[var(--bevel-dark)] shadow-[inset_-1px_-1px_0_0_var(--bevel-dark),inset_1px_1px_0_0_var(--bevel-light)] hover:brightness-105">New</button>
+          <button onClick={save} className="px-2 py-0.5 text-sm bg-[var(--win-bg)] text-gray-900 border border-[var(--bevel-dark)] shadow-[inset_-1px_-1px_0_0_var(--bevel-dark),inset_1px_1px_0_0_var(--bevel-light)] hover:brightness-105">Save</button>
+          <button
+            onClick={() => {
+              if (confirm('Reset to default docs? This will remove your local apps.')) {
+                clearUserDocs()
+                const base = getDefaultDocs()
+                setDocs(base)
+                setCurrent('profile')
+                try { setOpenWindows(Object.keys(base)) } catch {}
+              }
+            }}
+            className="px-2 py-0.5 text-sm bg-[var(--win-bg)] text-gray-900 border border-[var(--bevel-dark)] shadow-[inset_-1px_-1px_0_0_var(--bevel-dark),inset_1px_1px_0_0_var(--bevel-light)] hover:brightness-105"
+          >Reset</button>
+          <button
+            onClick={() => {
+              const blob = new Blob([value], { type: 'text/markdown;charset=utf-8' })
+              const a = document.createElement('a')
+              a.href = URL.createObjectURL(blob)
+              a.download = `${current}.md`
+              document.body.appendChild(a)
+              a.click()
+              a.remove()
+              URL.revokeObjectURL(a.href)
+            }}
+            className="ml-4 px-2 py-0.5 text-sm bg-[var(--win-bg)] text-gray-900 border border-[var(--bevel-dark)] shadow-[inset_-1px_-1px_0_0_var(--bevel-dark),inset_1px_1px_0_0_var(--bevel-light)] hover:brightness-105"
+          >Export .md</button>
+        </div>
+        {/* Path and actions */}
         <div className="flex items-center justify-between px-2 py-1 border-b border-[var(--bevel-dark)] bg-[var(--chrome-bg)]">
           <div className="text-xs text-gray-800">{current}.md</div>
-          <div className="flex gap-2">
-            <button
-              onClick={async () => {
-                if (confirm("Reload all docs from defaults? This will overwrite your local changes.")) {
-                  const next = await import('../state/docs').then(m => m.getDefaultDocs())
-                  setDocs(next)
-                  setCurrent("profile")
-                }
-              }}
-              className="bg-[var(--win-bg)] hover:brightness-105 border border-[var(--bevel-dark)] rounded px-3 py-1 text-sm"
-              title="Reload default docs"
-            >
-              Reset Docs
-            </button>
-            <button onClick={save} className="bg-[var(--chrome-bg)] hover:brightness-105 border border-[var(--bevel-dark)] rounded px-3 py-1 text-sm">
-              Save
-            </button>
-          </div>
+          <div className="text-xs text-gray-500">Use File menu for actions</div>
         </div>
         <div ref={containerRef} style={{ height: 360 }} />
       </div>
