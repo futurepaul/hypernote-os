@@ -26,7 +26,7 @@ export function App() {
         </p>
       </div>
       {Object.entries(docs).map(([id, doc]) => (
-        <DraggableWindow key={id} id={id} title={parseFrontmatterName(doc) || id}>
+        <DraggableWindow key={id} id={id} title={parseFrontmatterName(doc) || id} contentClassName={id === 'editor' ? "bg-gray-100 text-sm text-gray-900 p-0" : undefined}>
           {id === 'editor' ? <EditorPanel /> : id === 'apps' ? <AppSwitcherPanel /> : <AppView id={id} />}
         </DraggableWindow>
       ))}

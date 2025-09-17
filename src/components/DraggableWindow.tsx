@@ -2,7 +2,7 @@ import { useEffect, useRef, type PropsWithChildren } from "react";
 import { useAtom, useSetAtom, useAtomValue } from 'jotai'
 import { windowPosAtom, windowZAtom, bringWindowToFrontAtom } from '../state/appAtoms'
 
-export function DraggableWindow({ id, title, children }: PropsWithChildren<{ id: string; title?: string }>) {
+export function DraggableWindow({ id, title, children, contentClassName }: PropsWithChildren<{ id: string; title?: string; contentClassName?: string }>) {
   const dragRef = useRef<HTMLDivElement | null>(null);
   const isDragging = useRef(false);
   const offset = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -62,7 +62,7 @@ export function DraggableWindow({ id, title, children }: PropsWithChildren<{ id:
         >
           {title ?? id}
         </div>
-        <div className="bg-gray-100 p-3 text-sm text-gray-900">{children}</div>
+        <div className={contentClassName ?? "bg-gray-100 p-3 text-sm text-gray-900"}>{children}</div>
       </div>
     </div>
   );

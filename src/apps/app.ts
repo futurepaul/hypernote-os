@@ -10,7 +10,7 @@ name: Profile
     - json: { from: content, as: parsed }
     - get: parsed
 ---
-Paste your nsec and view profile for {{user.pubkey}}.
+Paste an npub to view a profile.
 
 # Name: {{ $profile.name }}
 
