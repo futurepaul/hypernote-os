@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 // @ts-nocheck
 import plugin from "bun-plugin-tailwind";
-import mdLoader from "./plugins/md-loader";
 import { existsSync } from "fs";
 import { rm } from "fs/promises";
 import path from "path";
@@ -127,7 +126,7 @@ console.log(`📄 Found ${entrypoints.length} HTML ${entrypoints.length === 1 ? 
 const result = await Bun.build({
   entrypoints,
   outdir,
-  plugins: [plugin, mdLoader],
+  plugins: [plugin],
   minify: true,
   target: "browser",
   sourcemap: "linked",

@@ -1,7 +1,7 @@
 import { useAtomValue, useSetAtom } from 'jotai'
 import { docsAtom, bringWindowToFrontAtom } from '../state/appAtoms'
 
-export function AppSwitcher() {
+export function AppSwitcherPanel() {
   const docs = useAtomValue(docsAtom)
   const bringToFront = useSetAtom(bringWindowToFrontAtom)
   const ids = Object.keys(docs)

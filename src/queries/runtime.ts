@@ -18,6 +18,7 @@ class QueryRuntime {
   private client: any | null = null;
   private relays: string[] = [];
   private subs = new Map<string, { unsubscribe(): void }>();
+  private warnedMissing = false;
 
   async ensureClient(relays: string[]): Promise<boolean> {
     // Lazy load to avoid hard dependency unless used
@@ -26,11 +27,17 @@ class QueryRuntime {
       try {
         mod = await import(/* @vite-ignore */ 'hypersauce');
       } catch (e) {
-        console.warn('[Hypersauce] module not available', e);
+        if (!this.warnedMissing) {
+          console.warn('[Hypersauce] module not available');
+          this.warnedMissing = true;
+        }
         return false;
       }
       if (!mod || !mod.HypersauceClient) {
-        console.warn('[Hypersauce] HypersauceClient not found in module');
+        if (!this.warnedMissing) {
+          console.warn('[Hypersauce] HypersauceClient not found in module');
+          this.warnedMissing = true;
+        }
         return false;
       }
       this.client = new mod.HypersauceClient({ relays });

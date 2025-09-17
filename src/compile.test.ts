@@ -1,14 +1,10 @@
 import { expect, test, describe } from "bun:test";
 import { compileMarkdownDoc } from "./compiler";
-
-async function load(path: string) {
-  const url = new URL(path, import.meta.url);
-  return await Bun.file(url).text();
-}
+import { defaultApps } from "./apps/app";
 
 describe("compiler", () => {
   test("wallet compiles to AST with hstack and buttons", async () => {
-    const md = await load("./apps/wallet.md");
+    const md = defaultApps.wallet;
     const { ast, meta } = compileMarkdownDoc(md);
     expect(meta.name).toBe("Wallet");
     expect(Array.isArray(ast)).toBe(true);
@@ -28,7 +24,7 @@ describe("compiler", () => {
   });
 
   test("profile compiles input and button with yaml payloads", async () => {
-    const md = await load("./apps/profile.md");
+    const md = defaultApps.profile;
     const { ast, meta } = compileMarkdownDoc(md);
     expect(meta.name).toBe("Profile");
     const input = ast.find(n => n.type === "input");
@@ -38,4 +34,3 @@ describe("compiler", () => {
     expect(button?.data?.action).toBe("@load_profile");
   });
 });
-

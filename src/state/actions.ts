@@ -2,6 +2,24 @@ import { useAtomValue, useSetAtom } from 'jotai'
 import { relaysAtom, userAtom } from './appAtoms'
 import { SimplePool, type Event } from 'nostr-tools'
 
+export function normalizeActionName(name?: string) {
+  if (!name) return undefined as unknown as string
+  let n = String(name).trim()
+  if (n.startsWith('@')) n = n.slice(1)
+  // camelCase → snake_case
+  n = n.replace(/([A-Z])/g, '_$1').toLowerCase()
+  // dashes/spaces → underscore; collapse repeats
+  n = n.replace(/[\-\s]+/g, '_').replace(/__+/g, '_')
+  // alias map
+  const aliases: Record<string, string> = {
+    setpubkey: 'set_pubkey',
+    set_pubkey: 'set_pubkey',
+    loadprofile: 'load_profile',
+    load_profile: 'load_profile',
+  }
+  return aliases[n] || n
+}
+
 export function useAction(name?: string) {
   const setUser = useSetAtom(userAtom)
   const relays = useAtomValue(relaysAtom)
@@ -9,12 +27,13 @@ export function useAction(name?: string) {
 
   async function run(payload?: any) {
     if (!name) return
-    if (name === '@set_pubkey') {
+    const n = normalizeActionName(name)
+    if (n === 'set_pubkey') {
       const hex = String(payload ?? '')
       setUser(u => ({ ...u, pubkey: hex }))
       return
     }
-    if (name === '@load_profile') {
+    if (n === 'load_profile') {
       const pk = user.pubkey
       if (!pk) {
         console.warn('@load_profile: user.pubkey is not set')

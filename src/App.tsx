@@ -1,12 +1,12 @@
 import "./index.css";
-import { useEffect, useState } from "react";
-import { useAtom, useSetAtom } from 'jotai'
+import { useEffect } from "react";
+import { useAtomValue, useSetAtom } from 'jotai'
 import { docsAtom, timeNowAtom } from './state/appAtoms'
-import { hydrateDocsFromAssets, parseFrontmatterName } from './state/docs'
+import { parseFrontmatterName } from './state/docs'
 import { DraggableWindow } from './components/DraggableWindow'
 import { AppView } from './components/AppView'
-import { EditorWindow } from './components/EditorWindow'
-import { AppSwitcher } from './components/AppSwitcher'
+import { EditorPanel } from './components/EditorPanel'
+import { AppSwitcherPanel } from './components/AppSwitcherPanel'
 
 export function App() {
   const setTimeNow = useSetAtom(timeNowAtom)
@@ -14,23 +14,7 @@ export function App() {
     const t = setInterval(() => setTimeNow(Math.floor(Date.now() / 1000)), 1000)
     return () => clearInterval(t)
   }, [setTimeNow])
-  // Hydrate docs in dev & after reset
-  const [docs, setDocs] = useAtom(docsAtom)
-  const [hydrated, setHydrated] = useState(false)
-  useEffect(() => {
-    let mounted = true
-    ;(async () => {
-      const next = await hydrateDocsFromAssets(docs)
-      if (!mounted) return
-      setDocs(next)
-      setHydrated(true)
-    })()
-    return () => { mounted = false }
-  }, [])
-  useEffect(() => {
-    const needs = Object.values(docs).some(v => typeof v === 'string' && /\/(_bun|assets)\/asset\/.+\.md$/.test(v))
-    if (needs) { ;(async () => setDocs(await hydrateDocsFromAssets(docs)))() }
-  }, [docs, setDocs])
+  const docs = useAtomValue(docsAtom)
   // No bridge needed; inputs call Jotai actions directly now
 
   return (
@@ -43,7 +27,7 @@ export function App() {
       </div>
       {Object.entries(docs).map(([id, doc]) => (
         <DraggableWindow key={id} id={id} title={parseFrontmatterName(doc) || id}>
-          {id === 'editor' ? <EditorWindow /> : id === 'apps' ? <AppSwitcher /> : <AppView id={id} />}
+          {id === 'editor' ? <EditorPanel /> : id === 'apps' ? <AppSwitcherPanel /> : <AppView id={id} />}
         </DraggableWindow>
       ))}
     </main>
