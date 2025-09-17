@@ -1,4 +1,5 @@
 import { useMemo, useEffect, useState } from "react";
+import { shallow } from "zustand/shallow";
 import YAML from "yaml";
 import { useWindows } from "../store/windows";
 import { nip19, getPublicKey } from "nostr-tools";
@@ -148,10 +149,26 @@ function RenderNodes({ nodes, globals, windowId, queryScalars }: { nodes: Node[]
 }
 
 export function AppView({ id }: { id: string }) {
-  const { docs, globals, startQueriesFor, stopQueriesFor, queryScalars } = useWindows();
-  const doc = docs[id as keyof typeof docs] || "";
+  // Select only the doc text for this window to avoid global re-renders
+  const doc = useWindows(s => s.docs[id as keyof typeof s.docs] || "");
   const compiled = useMemo(() => compileMarkdownDoc(doc), [doc]);
   const nodes = useMemo(() => compiled.ast as Node[], [compiled]);
+
+  // Detect if this document references time.now; if not, don't subscribe to time updates
+  const usesTime = useMemo(() => /{{\s*time\.now\s*}}/.test(doc), [doc]);
+
+  // Select only the slices we need for this window
+  const { globalsUser, timeNow, startQueriesFor, stopQueriesFor, queryScalars } = useWindows(
+    s => ({
+      globalsUser: s.globals.user,
+      timeNow: usesTime ? s.globals.time.now : 0,
+      startQueriesFor: s.startQueriesFor,
+      stopQueriesFor: s.stopQueriesFor,
+      queryScalars: s.queryScalars,
+    }),
+    shallow,
+  );
+  const globals = useMemo(() => ({ user: globalsUser, time: { now: timeNow } }), [globalsUser, timeNow]);
 
   // No artificial tick; re-render comes from globals/time.now store updates
 
