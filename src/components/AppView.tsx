@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState } from "react";
+import { useMemo, useEffect, useState, useRef } from "react";
 import { shallow } from "zustand/shallow";
 import YAML from "yaml";
 import { useWindows } from "../store/windows";
@@ -158,17 +158,41 @@ export function AppView({ id }: { id: string }) {
   const usesTime = useMemo(() => /{{\s*time\.now\s*}}/.test(doc), [doc]);
 
   // Select only the slices we need for this window
-  const { globalsUser, timeNow, startQueriesFor, stopQueriesFor, queryScalars } = useWindows(
+  const { globalsUser, timeNow, startQueriesFor, stopQueriesFor, windowScalars } = useWindows(
     s => ({
       globalsUser: s.globals.user,
       timeNow: usesTime ? s.globals.time.now : 0,
       startQueriesFor: s.startQueriesFor,
       stopQueriesFor: s.stopQueriesFor,
-      queryScalars: s.queryScalars,
+      windowScalars: s.queryScalars[id as keyof typeof s.queryScalars] || {},
     }),
     shallow,
   );
   const globals = useMemo(() => ({ user: globalsUser, time: { now: timeNow } }), [globalsUser, timeNow]);
+
+  // Per-render logging to trace causes
+  const renderCount = useRef(0);
+  useEffect(() => {
+    const n = ++renderCount.current;
+    try {
+      // summarize keys to avoid huge logs
+      const k = Object.keys(windowScalars || {});
+      console.log(`[Render] AppView ${id} #${n}`, { docLen: doc.length, usesTime, timeNow, userPubkey: globalsUser?.pubkey, scalars: k });
+    } catch {}
+  });
+
+  useEffect(() => {
+    console.log(`[Cause] ${id}: doc changed`, { len: doc.length });
+  }, [doc]);
+  useEffect(() => {
+    if (usesTime) console.log(`[Cause] ${id}: time.now`, timeNow);
+  }, [timeNow, usesTime]);
+  useEffect(() => {
+    console.log(`[Cause] ${id}: user.pubkey`, globalsUser?.pubkey);
+  }, [globalsUser?.pubkey]);
+  useEffect(() => {
+    console.log(`[Cause] ${id}: queryScalars`, Object.keys(windowScalars || {}));
+  }, [windowScalars]);
 
   // No artificial tick; re-render comes from globals/time.now store updates
 
@@ -178,7 +202,7 @@ export function AppView({ id }: { id: string }) {
     return () => stopQueriesFor(id as any);
   }, [id, compiled.meta, globals.user.pubkey]);
 
-  return <RenderNodes nodes={nodes} globals={globals} windowId={id} queryScalars={queryScalars} />;
+  return <RenderNodes nodes={nodes} globals={globals} windowId={id} queryScalars={{ [id]: windowScalars }} />;
 }
 
 export function parseFrontmatterName(doc: string): string | undefined {

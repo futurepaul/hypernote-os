@@ -1,4 +1,4 @@
-import { create } from "zustand";
+import { createWithEqualityFn } from "zustand/traditional";
 import YAML from "yaml";
 // raw markdown app sources
 // These imports rely on our md loader during build; in dev, Bun supports importing text for many extensions.
@@ -102,7 +102,7 @@ export function getDefaultDocs(): Record<WindowId, string> {
   } as Record<WindowId, string>;
 }
 
-export const useWindows = create<WindowsState>((set, get) => ({
+export const useWindows = createWithEqualityFn<WindowsState>((set, get) => ({
   windows: initialWindows,
   activeId: "profile",
   nextZ: 1001,
@@ -276,4 +276,4 @@ export const useWindows = create<WindowsState>((set, get) => ({
       // Do not persist to localStorage
     }
   },
-}));
+}), Object.is);
