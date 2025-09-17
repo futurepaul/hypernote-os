@@ -10,6 +10,16 @@ function getPath(obj: any, path: string): any {
   return path.split('.').reduce((acc, k) => (acc && typeof acc === 'object' ? acc[k] : undefined), obj);
 }
 
+function mdImagesToHtml(text: string): string {
+  // Convert Markdown image syntax to HTML <img>, minimal implementation
+  // ![alt](url)
+  return text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_m, alt, url) => {
+    const a = String(alt || '').replace(/"/g, '&quot;');
+    const u = String(url || '').replace(/"/g, '&quot;');
+    return `<img src="${u}" alt="${a}">`;
+  });
+}
+
 function interpolate(text: string, globals: any, windowId: string, queryScalars: Record<string, Record<string, any>>) {
   if (!text) return "";
   return text.replace(/{{\s*([$]?[a-zA-Z0-9_\.-]+)\s*}}/g, (_m, key: string) => {
@@ -112,7 +122,7 @@ function RenderNodes({ nodes, globals, windowId, queryScalars }: { nodes: Node[]
         <div
           key={key}
           className="app-markdown"
-          dangerouslySetInnerHTML={{ __html: interpolate(n.html || "", globals, windowId, queryScalars) }}
+          dangerouslySetInnerHTML={{ __html: mdImagesToHtml(interpolate(n.html || "", globals, windowId, queryScalars)) }}
         />
       );
     if (n.type === "button") return <ButtonNode key={key} text={n.data?.text || ""} action={n.data?.action} globals={globals} windowId={windowId} queryScalars={queryScalars} />;
