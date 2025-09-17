@@ -30,7 +30,7 @@ function computeDefaultLayout(ids: string[]): Record<string, Layout> {
   return out
 }
 
-const defaultDocIds = Object.keys(getDefaultDocs())
+const defaultDocIds = Object.keys(getInitialDocs())
 const initialLayout: Record<string, Layout> = loadLayout() || computeDefaultLayout(defaultDocIds)
 const initialZCounter = Math.max(0, ...Object.values(initialLayout).map(l => l.z)) + 1
 
