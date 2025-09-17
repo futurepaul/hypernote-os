@@ -158,16 +158,11 @@ export function AppView({ id }: { id: string }) {
   const usesTime = useMemo(() => /{{\s*time\.now\s*}}/.test(doc), [doc]);
 
   // Select only the slices we need for this window
-  const { globalsUser, timeNow, startQueriesFor, stopQueriesFor, windowScalars } = useWindows(
-    s => ({
-      globalsUser: s.globals.user,
-      timeNow: usesTime ? s.globals.time.now : 0,
-      startQueriesFor: s.startQueriesFor,
-      stopQueriesFor: s.stopQueriesFor,
-      windowScalars: s.queryScalars[id as keyof typeof s.queryScalars] || {},
-    }),
-    shallow,
-  );
+  const globalsUser = useWindows(s => s.globals.user, Object.is);
+  const timeNow = useWindows(s => (usesTime ? s.globals.time.now : 0));
+  const startQueriesFor = useWindows(s => s.startQueriesFor);
+  const stopQueriesFor = useWindows(s => s.stopQueriesFor);
+  const windowScalars = useWindows(s => s.queryScalars[id as keyof typeof s.queryScalars], Object.is);
   const globals = useMemo(() => ({ user: globalsUser, time: { now: timeNow } }), [globalsUser, timeNow]);
 
   // Per-render logging to trace causes
@@ -202,7 +197,8 @@ export function AppView({ id }: { id: string }) {
     return () => stopQueriesFor(id as any);
   }, [id, compiled.meta, globals.user.pubkey]);
 
-  return <RenderNodes nodes={nodes} globals={globals} windowId={id} queryScalars={{ [id]: windowScalars }} />;
+  const EMPTY: Record<string, any> = useMemo(() => ({}), []);
+  return <RenderNodes nodes={nodes} globals={globals} windowId={id} queryScalars={{ [id]: windowScalars ?? EMPTY }} />;
 }
 
 export function parseFrontmatterName(doc: string): string | undefined {
