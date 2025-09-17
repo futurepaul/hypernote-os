@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+/* Page background: tile a 4x900 PNG horizontally with no scaling */
+body {
+  background-image: url("./bg.png");
+  background-repeat: repeat-x;
+  background-size: auto; /* no scaling */
+  background-position: top left;
+}
+
+/* Minimal markdown styling for rendered HTML */
+.app-markdown h1 {
+  font-weight: 700;
+  font-size: 1.5rem; /* ~text-2xl */
+  line-height: 1.2;
+  margin: 0.25rem 0 0.5rem 0;
+}
+.app-markdown p {
+  margin: 0.25rem 0;
+}
