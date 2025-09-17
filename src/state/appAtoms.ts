@@ -45,6 +45,8 @@ export const windowLayoutAtom = atom(
 )
 
 export const docsAtom = atom<Record<string, string>>(getDefaultDocs())
+// Select a single doc by id to avoid re-renders from unrelated doc changes
+export const docAtom = atomFamily((id: string) => atom((get) => (get(docsAtom)[id] || '')))
 
 export const relaysAtom = atom<string[]>([
   'wss://nos.lol',
@@ -54,6 +56,12 @@ export const relaysAtom = atom<string[]>([
 
 export const userAtom = atom<{ pubkey: string | null; profile?: any }>({ pubkey: null })
 export const timeNowAtom = atom<number>(Math.floor(Date.now() / 1000))
+// Only subscribe to global time for windows that reference time.now
+export const windowTimeAtom = atomFamily((id: string) => atom((get) => {
+  const doc = get(docAtom(id))
+  const usesTime = /{{\s*time\.now\s*}}/.test(doc)
+  return usesTime ? get(timeNowAtom) : 0
+}))
 
 // Window UI state
 export const windowPosAtom = atomFamily((id: string) => atom(

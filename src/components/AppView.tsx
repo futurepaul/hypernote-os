@@ -3,7 +3,7 @@ import { nip19, getPublicKey } from "nostr-tools";
 import { compileMarkdownDoc, type UiNode } from "../compiler";
 import { useAtomValue, useAtom } from 'jotai'
 import { windowScalarsAtom } from '../state/queriesAtoms'
-import { docsAtom, userAtom, relaysAtom, timeNowAtom } from '../state/appAtoms'
+import { docAtom, userAtom, relaysAtom, windowTimeAtom } from '../state/appAtoms'
 import { formsAtom } from '../state/formsAtoms'
 import { queryRuntime } from '../queries/runtime'
 import { interpolate as interp, resolveImgDollarSrc } from '../interp/interpolate'
@@ -176,7 +176,7 @@ function RenderNodes({ nodes, globals, windowId, queryScalars }: { nodes: Node[]
 
 export function AppView({ id }: { id: string }) {
   // Select only the doc text for this window to avoid global re-renders
-  const doc = useAtomValue(docsAtom)[id] || "";
+  const doc = useAtomValue(docAtom(id)) || "";
   const compiled = useMemo(() => compileMarkdownDoc(doc), [doc]);
   const nodes = useMemo(() => compiled.ast as Node[], [compiled]);
 
@@ -185,8 +185,7 @@ export function AppView({ id }: { id: string }) {
 
   // Select only the slices we need for this window
   const globalsUser = useAtomValue(userAtom);
-  const timeNowAll = useAtomValue(timeNowAtom);
-  const timeNow = usesTime ? timeNowAll : 0;
+  const timeNow = useAtomValue(windowTimeAtom(id));
   const windowScalars = useAtomValue(windowScalarsAtom(id));
   const forms = useAtomValue(formsAtom(id))
   const globals = useMemo(() => ({ user: globalsUser, time: { now: timeNow }, form: forms }), [globalsUser, timeNow, forms]);
