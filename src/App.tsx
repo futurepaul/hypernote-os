@@ -5,6 +5,8 @@ import { docsAtom, timeNowAtom, userAtom } from './state/appAtoms'
 import { hydrateDocsFromAssets, parseFrontmatterName } from './state/docs'
 import { DraggableWindow } from './components/DraggableWindow'
 import { AppView } from './components/AppView'
+import { EditorWindow } from './components/EditorWindow'
+import { AppSwitcher } from './components/AppSwitcher'
 
 export function App() {
   const setTimeNow = useSetAtom(timeNowAtom)
@@ -29,7 +31,7 @@ export function App() {
       </div>
       {Object.entries(docs).map(([id, doc]) => (
         <DraggableWindow key={id} id={id} title={parseFrontmatterName(doc) || id}>
-          <AppView id={id} />
+          {id === 'editor' ? <EditorWindow /> : id === 'apps' ? <AppSwitcher /> : <AppView id={id} />}
         </DraggableWindow>
       ))}
     </main>

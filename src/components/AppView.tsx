@@ -17,6 +17,34 @@ function interpolate(text: string, globals: any, windowId: string, queryScalars:
 
 // parsing/compilation is handled by compiler.ts
 
+function HtmlNode({ n, globals, windowId, queryScalars }: { n: Node; globals: any; windowId: string; queryScalars: Record<string, Record<string, any>> }) {
+  const deps = useMemo(() => {
+    const refs = n.refs || []
+    const qsAny: any = queryScalars as any
+    const q: Record<string, any> = (qsAny && typeof qsAny === 'object') ? (qsAny[windowId] || {}) : {}
+    const getPath = (obj: any, path: string) => path.split('.').reduce((acc, k) => (acc && typeof acc === 'object') ? acc[k] : undefined, obj)
+    return refs.map(ref => {
+      if (ref === 'time.now') return String(globals?.time?.now ?? '')
+      if (ref.startsWith('$')) {
+        const [id, ...rest] = ref.split('.')
+        const idKey = String(id)
+        const base = (q as any)[idKey]
+        const v = rest.length ? getPath(base, rest.join('.')) : base
+        return JSON.stringify(v ?? '')
+      }
+      return String(getPath(globals, ref) ?? '')
+    })
+  }, [n.refs, windowId, queryScalars, globals])
+
+  const html = useMemo(() => {
+    const raw = interpolate(n.html || '', globals, windowId, queryScalars)
+    return resolveImgDollarSrc(raw, queryScalars[windowId] || {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [n.id, ...deps])
+
+  return <div className="app-markdown" dangerouslySetInnerHTML={{ __html: html }} />
+}
+
 function ButtonNode({ text, globals, action, windowId, queryScalars }: { text?: string; globals: any; action?: string; windowId: string; queryScalars: Record<string, Record<string, any>> }) {
   const label = (interpolate(String(text ?? ""), globals, windowId, queryScalars).trim() || "Button");
   const run = useAction(action)
@@ -90,13 +118,7 @@ function InputNode({ text, globals, windowId, queryScalars }: { text: string; gl
 function RenderNodes({ nodes, globals, windowId, queryScalars }: { nodes: Node[]; globals: any; windowId: string; queryScalars: Record<string, Record<string, any>> }) {
   const renderNode = (n: Node, key: number): ReactNode => {
     if (n.type === "html")
-      return (
-        <div
-          key={key}
-          className="app-markdown"
-          dangerouslySetInnerHTML={{ __html: resolveImgDollarSrc(interpolate(n.html || "", globals, windowId, queryScalars), queryScalars[windowId] || {}) }}
-        />
-      );
+      return <HtmlNode key={n.id || key} n={n} globals={globals} windowId={windowId} queryScalars={queryScalars} />;
     if (n.type === "button") return <ButtonNode key={key} text={n.data?.text || ""} action={n.data?.action} globals={globals} windowId={windowId} queryScalars={queryScalars} />;
     if (n.type === "input") return <InputNode key={key} text={n.data?.text || ""} globals={globals} windowId={windowId} queryScalars={queryScalars} />;
     if (n.type === "hstack" || n.type === "vstack")
