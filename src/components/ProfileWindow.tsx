@@ -1,9 +1,10 @@
 import { memo, useState } from "react";
 import { DraggableWindow } from "./DraggableWindow";
-import type { WindowId } from "../store/windows";
-import { useWindows } from "../store/windows";
+import { useAtomValue } from 'jotai'
+import { docsAtom } from '../state/appAtoms'
 import { AppView } from "./AppView";
 import { nip19, getPublicKey, SimplePool, type Event } from "nostr-tools";
+import { parseFrontmatterName } from '../state/docs'
 
 const RELAYS = [
   "wss://relay.damus.io",
@@ -12,7 +13,8 @@ const RELAYS = [
 ];
 
 export const ProfileWindow = memo(function ProfileWindow() {
-  const { windows } = useWindows();
+  const docs = useAtomValue(docsAtom)
+  const title = parseFrontmatterName(docs.profile) || 'Profile'
   const [nsec, setNsec] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,7 +51,7 @@ export const ProfileWindow = memo(function ProfileWindow() {
   }
 
   return (
-    <DraggableWindow id={"profile" as WindowId} title={windows.profile.title}>
+    <DraggableWindow id={'profile'} title={title}>
       <AppView id="profile" />
     </DraggableWindow>
   );

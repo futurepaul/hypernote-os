@@ -4,10 +4,12 @@ import { toHast } from "very-small-parser/lib/markdown/block/toHast";
 import { toText as htmlToText } from "very-small-parser/lib/html/toText";
 
 export type UiNode = {
+  id: string;
   type: "html" | "button" | "input" | "hstack" | "vstack";
   children?: UiNode[];
   html?: string;
   data?: any;
+  refs?: string[]; // variable references (e.g., $profile.name, user.pubkey, time.now)
 };
 
 export type CompiledDoc = {
@@ -51,8 +53,12 @@ export function compileMarkdownDoc(md: string): CompiledDoc {
   const tokens = Array.isArray(mdast) ? mdast : [mdast];
   const { meta, body } = parseFrontmatter(tokens);
 
+  // id generator for nodes
+  let nextId = 1;
+  const genId = () => String(nextId++);
+
   type Frame = { node: UiNode; group: any[] };
-  const root: UiNode = { type: "vstack", children: [] };
+  const root: UiNode = { id: genId(), type: "vstack", children: [] };
   const stack: Frame[] = [{ node: root, group: [] }];
 
   const flush = () => {
@@ -60,7 +66,8 @@ export function compileMarkdownDoc(md: string): CompiledDoc {
     if (!frame.group.length) return;
     const hast = toHast(frame.group);
     const html = htmlToText(hast);
-    (frame.node.children as UiNode[]).push({ type: "html", html });
+    const refs = extractRefs(html);
+    (frame.node.children as UiNode[]).push({ id: genId(), type: "html", html, refs });
     frame.group = [];
   };
 
@@ -74,25 +81,25 @@ export function compileMarkdownDoc(md: string): CompiledDoc {
       if (info === "button") {
         flush();
         const data = safeParseYamlBlock((t.value || "").trim());
-        pushNode({ type: "button", data });
+        pushNode({ id: genId(), type: "button", data });
         continue;
       }
       if (info === "input") {
         flush();
         const data = safeParseYamlBlock((t.value || "").trim());
-        pushNode({ type: "input", data });
+        pushNode({ id: genId(), type: "input", data });
         continue;
       }
       if (info === "hstack start" || info === "hstack.start") {
         flush();
-        const node: UiNode = { type: "hstack", children: [] };
+        const node: UiNode = { id: genId(), type: "hstack", children: [] };
         pushNode(node);
         stack.push({ node, group: [] });
         continue;
       }
       if (info === "vstack start" || info === "vstack.start") {
         flush();
-        const node: UiNode = { type: "vstack", children: [] };
+        const node: UiNode = { id: genId(), type: "vstack", children: [] };
         pushNode(node);
         stack.push({ node, group: [] });
         continue;
@@ -117,7 +124,8 @@ export function compileMarkdownDoc(md: string): CompiledDoc {
     if (frame.group.length) {
       const hast = toHast(frame.group);
       const html = htmlToText(hast);
-      (frame.node.children as UiNode[]).push({ type: "html", html });
+      const refs = extractRefs(html);
+      (frame.node.children as UiNode[]).push({ id: genId(), type: "html", html, refs });
       frame.group = [];
     }
   }
@@ -127,3 +135,15 @@ export function compileMarkdownDoc(md: string): CompiledDoc {
 
 export default compileMarkdownDoc;
 
+// Extract variable references from a rendered HTML chunk
+function extractRefs(html: string): string[] {
+  const refs = new Set<string>();
+  // Mustache-like tokens already interpolated later
+  const re = /{{\s*([$]?[a-zA-Z0-9_.-]+)\s*}}/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) refs.add(m[1]);
+  // $query.path inside img src or elsewhere
+  const reDollar = /(\$[a-zA-Z0-9_.-]+)/g;
+  while ((m = reDollar.exec(html)) !== null) refs.add(m[1]);
+  return Array.from(refs);
+}

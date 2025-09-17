@@ -1,17 +1,19 @@
 import { useEffect, useRef, type PropsWithChildren } from "react";
-import { useWindows, type WindowId } from "../store/windows";
+import { useAtom, useSetAtom, useAtomValue } from 'jotai'
+import { windowPosAtom, windowZAtom, bringWindowToFrontAtom } from '../state/appAtoms'
 
-export function DraggableWindow({ id, title, children }: PropsWithChildren<{ id: WindowId; title?: string }>) {
+export function DraggableWindow({ id, title, children }: PropsWithChildren<{ id: string; title?: string }>) {
   const dragRef = useRef<HTMLDivElement | null>(null);
   const isDragging = useRef(false);
   const offset = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  const { windows, setPos, setActive } = useWindows();
-  const w = windows[id];
+  const [pos, setPos] = useAtom(windowPosAtom(id))
+  const z = useAtomValue(windowZAtom(id))
+  const bringToFront = useSetAtom(bringWindowToFrontAtom)
 
   useEffect(() => {
     function onPointerMove(e: PointerEvent) {
       if (!isDragging.current) return;
-      setPos(id, { x: e.clientX - offset.current.x, y: e.clientY - offset.current.y });
+      setPos({ x: e.clientX - offset.current.x, y: e.clientY - offset.current.y });
     }
     function onPointerUp() {
       isDragging.current = false;
@@ -20,7 +22,7 @@ export function DraggableWindow({ id, title, children }: PropsWithChildren<{ id:
     }
     function onPointerDownGlobal(e: PointerEvent) {
       if (dragRef.current && dragRef.current.contains(e.target as Node)) {
-        setActive(id);
+        bringToFront(id)
       }
     }
     window.addEventListener("pointermove", onPointerMove);
@@ -35,21 +37,21 @@ export function DraggableWindow({ id, title, children }: PropsWithChildren<{ id:
 
   function onPointerDownTitle(e: React.PointerEvent) {
     isDragging.current = true;
-    offset.current.x = e.clientX - w.pos.x;
-    offset.current.y = e.clientY - w.pos.y;
-    setActive(id);
+    offset.current.x = e.clientX - pos.x;
+    offset.current.y = e.clientY - pos.y;
+    bringToFront(id)
     document.body.style.cursor = "grabbing";
     document.body.style.userSelect = "none";
   }
 
-  const titlebarClass = w.active ? "bg-yellow-300 text-gray-900" : "bg-gray-300 text-gray-800";
+  const titlebarClass = "bg-yellow-300 text-gray-900";
 
   return (
     <div
       className={`absolute select-none`}
-      style={{ left: w.pos.x, top: w.pos.y, zIndex: w.z }}
+      style={{ left: pos.x, top: pos.y, zIndex: z }}
       ref={dragRef}
-      onMouseDown={() => setActive(id)}
+      onMouseDown={() => bringToFront(id)}
     >
       <div className="border border-gray-600 shadow-[inset_-1px_-1px_0_0_#4b5563,inset_1px_1px_0_0_#ffffff] bg-gray-200">
         <div

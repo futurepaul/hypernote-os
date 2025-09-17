@@ -1,12 +1,14 @@
 import { DraggableWindow } from "./DraggableWindow";
-import type { WindowId } from "../store/windows";
 import { AppView } from "./AppView";
-import { useWindows } from "../store/windows";
+import { useAtomValue } from 'jotai'
+import { docsAtom } from '../state/appAtoms'
+import { parseFrontmatterName } from '../state/docs'
 
 export function WalletWindow() {
-  const { windows } = useWindows();
+  const docs = useAtomValue(docsAtom)
+  const title = parseFrontmatterName(docs.wallet) || 'Wallet'
   return (
-    <DraggableWindow id={"wallet" as WindowId} title={windows.wallet.title}>
+    <DraggableWindow id={'wallet'} title={title}>
       <AppView id="wallet" />
     </DraggableWindow>
   );

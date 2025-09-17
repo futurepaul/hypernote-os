@@ -1,11 +1,12 @@
 import { useMemo, useEffect, useState, useRef } from "react";
-import { shallow } from "zustand/shallow";
 import YAML from "yaml";
-import { useWindows } from "../store/windows";
 import { nip19, getPublicKey } from "nostr-tools";
 import { compileMarkdownDoc, type UiNode } from "../compiler";
 import { useAtomValue } from 'jotai'
 import { windowScalarsAtom } from '../state/queriesAtoms'
+import { docsAtom, userAtom, relaysAtom, timeNowAtom } from '../state/appAtoms'
+import { queryRuntime } from '../queries/runtime'
+import { interpolate as interp, resolveImgDollarSrc } from '../interp/interpolate'
 
 type Node = UiNode;
 
@@ -32,32 +33,12 @@ function resolveImgDollarSrc(html: string, windowId: string, queryScalars: Recor
 }
 
 function interpolate(text: string, globals: any, windowId: string, queryScalars: Record<string, Record<string, any>>) {
-  if (!text) return "";
-  return text.replace(/{{\s*([$]?[a-zA-Z0-9_\.-]+)\s*}}/g, (_m, key: string) => {
-    if (key === "time.now") return String(globals?.time?.now ?? Math.floor(Date.now() / 1000));
-    if (key.startsWith('$')) {
-      const [qid, ...rest] = key.split('.');
-      const id = qid; // full id like $profile
-      const path = rest.join('.') || '';
-      const appScalars = queryScalars[windowId] || {};
-      const base = appScalars[id];
-      if (base == null) {
-        // console.debug("interpolate: missing scalar", { windowId, id, path, keys: Object.keys(appScalars) });
-        return "";
-      }
-      if (!path) return String(base ?? "");
-      const v = getPath(base, path);
-      return v == null ? "" : String(v);
-    }
-    const val = getPath(globals, key);
-    return val == null ? "" : String(val);
-  });
+  return interp(text, { globals, queries: queryScalars[windowId] || {} })
 }
 
 // parsing/compilation is handled by compiler.ts
 
 function ButtonNode({ text, globals, action, windowId, queryScalars }: { text?: string; globals: any; action?: string; windowId: string; queryScalars: Record<string, Record<string, any>> }) {
-  const { runAction } = useWindows();
   const label = (interpolate(String(text ?? ""), globals, windowId, queryScalars).trim() || "Button");
   return (
     <button
@@ -65,7 +46,7 @@ function ButtonNode({ text, globals, action, windowId, queryScalars }: { text?: 
       onClick={() => {
         if (action) {
           console.log("ButtonNode: running action", action, "user.pubkey=", globals?.user?.pubkey);
-          runAction(action).catch((e) => console.warn("action error", e));
+          // TODO: action registry lift to Jotai; for now, no-op
         } else {
           console.log("ButtonNode: no action defined");
         }
@@ -77,7 +58,6 @@ function ButtonNode({ text, globals, action, windowId, queryScalars }: { text?: 
 }
 
 function InputNode({ text, globals, windowId, queryScalars }: { text: string; globals: any; windowId: string; queryScalars: Record<string, Record<string, any>> }) {
-  const { setUserPubkey } = useWindows();
   const [val, setVal] = useState("");
   const ph = interpolate(text || "", globals, windowId, queryScalars);
   const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -88,7 +68,8 @@ function InputNode({ text, globals, windowId, queryScalars }: { text: string; gl
     // Hex pubkey (64 hex chars)
     if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
       const hex = trimmed.toLowerCase();
-      setUserPubkey(hex);
+      // TODO: move to action registry; temporary direct global set via custom event
+      window.dispatchEvent(new CustomEvent('hypernote:set-pubkey', { detail: hex }))
       console.log("set user.pubkey from hex", hex);
       return;
     }
@@ -99,7 +80,7 @@ function InputNode({ text, globals, windowId, queryScalars }: { text: string; gl
           const sk = d.data as Uint8Array | string;
           const skHex = typeof sk === "string" ? sk : Array.from(sk).map(b => b.toString(16).padStart(2, "0")).join("");
           const pk = getPublicKey(skHex);
-          setUserPubkey(pk);
+          window.dispatchEvent(new CustomEvent('hypernote:set-pubkey', { detail: pk }))
           console.log("set user.pubkey from nsec", pk);
         }
       } catch {}
@@ -110,7 +91,7 @@ function InputNode({ text, globals, windowId, queryScalars }: { text: string; gl
         if (d.type === "npub") {
           const data = d.data as Uint8Array | string;
           const hex = typeof data === "string" ? data : Array.from(data).map(b => b.toString(16).padStart(2, "0")).join("");
-          setUserPubkey(hex);
+          window.dispatchEvent(new CustomEvent('hypernote:set-pubkey', { detail: hex }))
           console.log("set user.pubkey from npub", hex);
         }
       } catch {}
@@ -152,7 +133,7 @@ function RenderNodes({ nodes, globals, windowId, queryScalars }: { nodes: Node[]
 
 export function AppView({ id }: { id: string }) {
   // Select only the doc text for this window to avoid global re-renders
-  const doc = useWindows(s => s.docs[id as keyof typeof s.docs] || "");
+  const doc = useAtomValue(docsAtom)[id] || "";
   const compiled = useMemo(() => compileMarkdownDoc(doc), [doc]);
   const nodes = useMemo(() => compiled.ast as Node[], [compiled]);
 
@@ -160,10 +141,8 @@ export function AppView({ id }: { id: string }) {
   const usesTime = useMemo(() => /{{\s*time\.now\s*}}/.test(doc), [doc]);
 
   // Select only the slices we need for this window
-  const globalsUser = useWindows(s => s.globals.user, Object.is);
-  const timeNow = useWindows(s => (usesTime ? s.globals.time.now : 0));
-  const startQueriesFor = useWindows(s => s.startQueriesFor);
-  const stopQueriesFor = useWindows(s => s.stopQueriesFor);
+  const globalsUser = useAtomValue(userAtom);
+  const timeNow = usesTime ? useAtomValue(timeNowAtom) : 0;
   const windowScalars = useAtomValue(windowScalarsAtom(id));
   const globals = useMemo(() => ({ user: globalsUser, time: { now: timeNow } }), [globalsUser, timeNow]);
 
@@ -194,10 +173,19 @@ export function AppView({ id }: { id: string }) {
   // No artificial tick; re-render comes from globals/time.now store updates
 
   // Start/stop queries for this app when meta or pubkey changes
+  const relays = useAtomValue(relaysAtom)
   useEffect(() => {
-    startQueriesFor(id as any, compiled.meta).catch(() => {});
-    return () => stopQueriesFor(id as any);
-  }, [id, compiled.meta, globals.user.pubkey]);
+    (async () => {
+      await queryRuntime.start({
+        windowId: id,
+        meta: compiled.meta,
+        relays,
+        context: { user: { pubkey: globals.user.pubkey } },
+        onScalars: () => {},
+      })
+    })()
+    return () => queryRuntime.stop(id)
+  }, [id, compiled.meta, globals.user.pubkey, relays])
 
   const EMPTY: Record<string, any> = useMemo(() => ({}), []);
   return <RenderNodes nodes={nodes} globals={globals} windowId={id} queryScalars={{ [id]: windowScalars ?? EMPTY }} />;
