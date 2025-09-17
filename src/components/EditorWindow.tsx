@@ -69,10 +69,12 @@ export function EditorWindow() {
             <div className="text-xs text-gray-700">{current}.md</div>
             <div className="flex gap-2">
               <button
-                onClick={() => {
+                onClick={async () => {
                   if (confirm("Reload all docs from defaults? This will overwrite your local changes.")) {
-                    setDocs(getDefaultDocs());
-                    setCurrent("profile");
+                    const next = await import('../state/docs').then(m => m.getDefaultDocs())
+                    const hydrated = await import('../state/docs').then(m => m.hydrateDocsFromAssets(next))
+                    setDocs(hydrated)
+                    setCurrent("profile")
                   }
                 }}
                 className="bg-gray-200 hover:bg-gray-300 border border-gray-600 rounded px-3 py-1 text-sm"
