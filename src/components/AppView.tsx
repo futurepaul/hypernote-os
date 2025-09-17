@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useEffect } from "react";
 import YAML from "yaml";
 import { useWindows } from "../store/windows";
 import { nip19, getPublicKey } from "nostr-tools";
@@ -10,22 +10,7 @@ function getPath(obj: any, path: string): any {
   return path.split('.').reduce((acc, k) => (acc && typeof acc === 'object' ? acc[k] : undefined), obj);
 }
 
-function mdImagesToHtml(text: string): string {
-  // Convert Markdown image syntax to HTML <img>, minimal implementation
-  // ![alt](url)
-  let out = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_m, alt, url) => {
-    const a = String(alt || '').replace(/"/g, '&quot;');
-    const u = String(url || '').replace(/"/g, '&quot;');
-    return `<img src="${u}" alt="${a}">`;
-  });
-  // Fallback: some templated images may be rendered as plain text: "alt(url)" inside <p>
-  out = out.replace(/<p>\s*([^<>()]+)\((https?:[^)]+)\)\s*<\/p>/g, (_m, alt, url) => {
-    const a = String(alt || '').trim().replace(/"/g, '&quot;');
-    const u = String(url || '').trim().replace(/"/g, '&quot;');
-    return `<p><img src="${u}" alt="${a}"></p>`;
-  });
-  return out;
-}
+// Note: we intentionally do not try to re-parse markdown images here anymore.
 
 function resolveImgDollarSrc(html: string, windowId: string, queryScalars: Record<string, Record<string, any>>): string {
   return html.replace(/<img\b([^>]*?)src=["']([^"']+)["']([^>]*)>/g, (m, pre, src, post) => {
@@ -145,7 +130,7 @@ function RenderNodes({ nodes, globals, windowId, queryScalars }: { nodes: Node[]
         <div
           key={key}
           className="app-markdown"
-          dangerouslySetInnerHTML={{ __html: resolveImgDollarSrc(mdImagesToHtml(interpolate(n.html || "", globals, windowId, queryScalars)), windowId, queryScalars) }}
+          dangerouslySetInnerHTML={{ __html: resolveImgDollarSrc(interpolate(n.html || "", globals, windowId, queryScalars), windowId, queryScalars) }}
         />
       );
     if (n.type === "button") return <ButtonNode key={key} text={n.data?.text || ""} action={n.data?.action} globals={globals} windowId={windowId} queryScalars={queryScalars} />;
@@ -164,16 +149,11 @@ function RenderNodes({ nodes, globals, windowId, queryScalars }: { nodes: Node[]
 
 export function AppView({ id }: { id: string }) {
   const { docs, globals, startQueriesFor, stopQueriesFor, queryScalars } = useWindows();
-  const [tick, setTick] = useState(0);
   const doc = docs[id as keyof typeof docs] || "";
   const compiled = useMemo(() => compileMarkdownDoc(doc), [doc]);
-  const nodes = useMemo(() => compiled.ast as Node[], [compiled, tick]);
+  const nodes = useMemo(() => compiled.ast as Node[], [compiled]);
 
-  // Re-render periodically to update time placeholders
-  useEffect(() => {
-    const t = setInterval(() => setTick(t => t + 1), 1000);
-    return () => clearInterval(t);
-  }, []);
+  // No artificial tick; re-render comes from globals/time.now store updates
 
   // Start/stop queries for this app when meta or pubkey changes
   useEffect(() => {

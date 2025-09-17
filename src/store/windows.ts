@@ -192,11 +192,16 @@ export const useWindows = create<WindowsState>((set, get) => ({
   queryScalars: {} as Record<WindowId, Record<string, any>>,
   setQueryScalars: (id: WindowId, scalars: Record<string, any>) => {
     const prev = get().queryScalars[id] || {};
-    // shallow merge and avoid update if identical
-    let changed = false;
     const next = { ...prev } as Record<string, any>;
+    let changed = false;
     for (const k of Object.keys(scalars)) {
-      if (next[k] !== scalars[k]) { next[k] = scalars[k]; changed = true; }
+      const a = prev[k];
+      const b = scalars[k];
+      let equal = a === b;
+      if (!equal && typeof a === 'object' && a && typeof b === 'object' && b) {
+        try { equal = JSON.stringify(a) === JSON.stringify(b); } catch { equal = false; }
+      }
+      if (!equal) { next[k] = b; changed = true; }
     }
     if (changed) set({ queryScalars: { ...get().queryScalars, [id]: next } });
   },
