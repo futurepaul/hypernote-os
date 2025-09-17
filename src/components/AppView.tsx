@@ -27,6 +27,22 @@ function mdImagesToHtml(text: string): string {
   return out;
 }
 
+function resolveImgDollarSrc(html: string, windowId: string, queryScalars: Record<string, Record<string, any>>): string {
+  return html.replace(/<img\b([^>]*?)src=["']([^"']+)["']([^>]*)>/g, (m, pre, src, post) => {
+    if (typeof src === 'string' && src.startsWith('$')) {
+      const [qid, ...rest] = src.split('.');
+      const base = (queryScalars[windowId] || {})[qid];
+      let val: any = base;
+      if (rest.length) val = getPath(base, rest.join('.'));
+      if (val != null) {
+        const u = String(val).replace(/"/g, '&quot;');
+        return `<img${pre}src="${u}"${post}>`;
+      }
+    }
+    return m;
+  });
+}
+
 function interpolate(text: string, globals: any, windowId: string, queryScalars: Record<string, Record<string, any>>) {
   if (!text) return "";
   return text.replace(/{{\s*([$]?[a-zA-Z0-9_\.-]+)\s*}}/g, (_m, key: string) => {
@@ -129,7 +145,7 @@ function RenderNodes({ nodes, globals, windowId, queryScalars }: { nodes: Node[]
         <div
           key={key}
           className="app-markdown"
-          dangerouslySetInnerHTML={{ __html: mdImagesToHtml(interpolate(n.html || "", globals, windowId, queryScalars)) }}
+          dangerouslySetInnerHTML={{ __html: resolveImgDollarSrc(mdImagesToHtml(interpolate(n.html || "", globals, windowId, queryScalars)), windowId, queryScalars) }}
         />
       );
     if (n.type === "button") return <ButtonNode key={key} text={n.data?.text || ""} action={n.data?.action} globals={globals} windowId={windowId} queryScalars={queryScalars} />;
