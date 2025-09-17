@@ -1,7 +1,7 @@
 import "./index.css";
 import { useEffect } from "react";
 import { useAtomValue, useSetAtom } from 'jotai'
-import { docsAtom, timeNowAtom } from './state/appAtoms'
+import { docsAtom, timeNowAtom, closeWindowAtom, openWindowsAtom, openWindowAtom, bringWindowToFrontAtom } from './state/appAtoms'
 import { parseFrontmatterName } from './state/docs'
 import { DraggableWindow } from './components/DraggableWindow'
 import { AppView } from './components/AppView'
@@ -15,6 +15,9 @@ export function App() {
     return () => clearInterval(t)
   }, [setTimeNow])
   const docs = useAtomValue(docsAtom)
+  const openIds = useAtomValue(openWindowsAtom)
+  const closeWindow = useSetAtom(closeWindowAtom)
+  const bringToFront = useSetAtom(bringWindowToFrontAtom)
   // No bridge needed; inputs call Jotai actions directly now
 
   return (
@@ -25,11 +28,21 @@ export function App() {
           Frontend is running with plain Tailwind on port 3420.
         </p>
       </div>
-      {Object.entries(docs).map(([id, doc]) => (
-        <DraggableWindow key={id} id={id} title={parseFrontmatterName(doc) || id} contentClassName={id === 'editor' ? "bg-gray-100 text-sm text-gray-900 p-0" : undefined}>
-          {id === 'editor' ? <EditorPanel /> : id === 'apps' ? <AppSwitcherPanel /> : <AppView id={id} />}
-        </DraggableWindow>
-      ))}
+      {openIds.map((id) => {
+        const doc = docs[id]
+        if (!doc) return null
+        return (
+          <DraggableWindow
+            key={id}
+            id={id}
+            title={parseFrontmatterName(doc) || id}
+            contentClassName={id === 'editor' ? "bg-gray-100 text-sm text-gray-900 p-0" : undefined}
+            onClose={() => closeWindow(id)}
+          >
+            {id === 'editor' ? <EditorPanel /> : id === 'apps' ? <AppSwitcherPanel /> : <AppView id={id} />}
+          </DraggableWindow>
+        )
+      })}
     </main>
   );
 }

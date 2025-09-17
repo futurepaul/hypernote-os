@@ -6,6 +6,11 @@ body {
   background-repeat: repeat-x;
   background-size: auto; /* no scaling */
   background-position: top left;
+  /* Try to reduce anti-aliasing for a retro feel */
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: auto;
+  font-smooth: never;
+  text-rendering: optimizeSpeed;
 }
 
 /* Minimal markdown styling for rendered HTML */

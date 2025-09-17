@@ -9,6 +9,7 @@ name: Profile
     - first
     - json: { from: content, as: parsed }
     - get: parsed
+icon: contact.png
 ---
 Paste an npub to view a profile.
 
@@ -28,6 +29,7 @@ action: @load_profile
 `,
   wallet: `---
 name: Wallet
+icon: settings.png
 ---
 # $60
 
@@ -49,16 +51,19 @@ action: @receive
 `,
   clock: `---
 name: Clock
+icon: clock.png
 ---
 The time is {{time.now}}.
 `,
   apps: `---
 name: Apps
+icon: folder.png
 ---
 Use the app switcher to activate windows.
 `,
   editor: `---
 name: Editor
+icon: edit.png
 ---
 Edit app documents on the right; click Save to persist.
 `,

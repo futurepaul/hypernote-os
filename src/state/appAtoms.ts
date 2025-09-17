@@ -48,6 +48,19 @@ export const docsAtom = atom<Record<string, string>>(getDefaultDocs())
 // Select a single doc by id to avoid re-renders from unrelated doc changes
 export const docAtom = atomFamily((id: string) => atom((get) => (get(docsAtom)[id] || '')))
 
+// Track which windows are open (rendered). Initialized with all doc ids.
+const initialOpen = Object.keys(getDefaultDocs())
+export const openWindowsAtom = atom<string[]>(initialOpen)
+export const isWindowOpenAtom = atomFamily((id: string) => atom((get) => (get(openWindowsAtom).includes(id))))
+export const openWindowAtom = atom(null, (get, set, id: string) => {
+  const open = get(openWindowsAtom)
+  if (!open.includes(id)) set(openWindowsAtom, [...open, id])
+})
+export const closeWindowAtom = atom(null, (get, set, id: string) => {
+  const open = get(openWindowsAtom)
+  if (open.includes(id)) set(openWindowsAtom, open.filter(x => x !== id))
+})
+
 export const relaysAtom = atom<string[]>([
   'wss://nos.lol',
   'wss://relay.damus.io',
