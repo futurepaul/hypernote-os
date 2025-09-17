@@ -1,4 +1,4 @@
-import { useMemo, useEffect } from "react";
+import { useMemo, useEffect, useState } from "react";
 import YAML from "yaml";
 import { useWindows } from "../store/windows";
 import { nip19, getPublicKey } from "nostr-tools";
@@ -166,7 +166,7 @@ export function AppView({ id }: { id: string }) {
 
 export function parseFrontmatterName(doc: string): string | undefined {
   try {
-    const { meta } = parseDoc(doc);
+    const { meta } = compileMarkdownDoc(doc);
     if (meta && typeof meta.name === "string") return meta.name;
   } catch {}
   return undefined;
