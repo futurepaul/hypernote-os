@@ -1,6 +1,9 @@
 // Lightweight runtime wrapper around Hypersauce that manages per-window
 // query subscriptions and emits only small derived scalars back to the store.
 
+import { getDefaultStore } from 'jotai'
+import { mergeScalars, windowScalarsAtom } from '../state/queriesAtoms'
+
 type Unsub = () => void;
 
 type StartArgs = {
@@ -79,6 +82,14 @@ class QueryRuntime {
               scalars[qid] = '';
             }
           }
+          // Push into per-window Jotai atom to avoid global re-renders
+          try {
+            const store = getDefaultStore();
+            const atom = windowScalarsAtom(windowId);
+            const prev = store.get(atom);
+            const merged = mergeScalars(prev, scalars);
+            if (merged !== prev) store.set(atom, merged);
+          } catch {}
           onScalars(scalars);
         },
         error: (_e: any) => {

@@ -4,6 +4,8 @@ import YAML from "yaml";
 import { useWindows } from "../store/windows";
 import { nip19, getPublicKey } from "nostr-tools";
 import { compileMarkdownDoc, type UiNode } from "../compiler";
+import { useAtomValue } from 'jotai'
+import { windowScalarsAtom } from '../state/queriesAtoms'
 
 type Node = UiNode;
 
@@ -162,7 +164,7 @@ export function AppView({ id }: { id: string }) {
   const timeNow = useWindows(s => (usesTime ? s.globals.time.now : 0));
   const startQueriesFor = useWindows(s => s.startQueriesFor);
   const stopQueriesFor = useWindows(s => s.stopQueriesFor);
-  const windowScalars = useWindows(s => s.queryScalars[id as keyof typeof s.queryScalars], Object.is);
+  const windowScalars = useAtomValue(windowScalarsAtom(id));
   const globals = useMemo(() => ({ user: globalsUser, time: { now: timeNow } }), [globalsUser, timeNow]);
 
   // Per-render logging to trace causes

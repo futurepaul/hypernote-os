@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { DraggableWindow } from "./DraggableWindow";
 import type { WindowId } from "../store/windows";
 import { useWindows } from "../store/windows";
@@ -11,7 +11,7 @@ const RELAYS = [
   "wss://relay.snort.social",
 ];
 
-export function ProfileWindow() {
+export const ProfileWindow = memo(function ProfileWindow() {
   const { windows } = useWindows();
   const [nsec, setNsec] = useState("");
   const [loading, setLoading] = useState(false);
@@ -53,4 +53,4 @@ export function ProfileWindow() {
       <AppView id="profile" />
     </DraggableWindow>
   );
-}
+});
