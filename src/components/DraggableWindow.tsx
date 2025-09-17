@@ -6,8 +6,10 @@ export function DraggableWindow({ id, title, children }: PropsWithChildren<{ id:
   const dragRef = useRef<HTMLDivElement | null>(null);
   const isDragging = useRef(false);
   const offset = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [pos, setPos] = useAtom(windowPosAtom(id))
-  const z = useAtomValue(windowZAtom(id))
+  const posAtom = windowPosAtom(id)
+  const pos = useAtomValue(posAtom) as { x: number; y: number }
+  const setPos = useSetAtom(posAtom)
+  const z = useAtomValue(windowZAtom(id)) as number
   const bringToFront = useSetAtom(bringWindowToFrontAtom)
 
   useEffect(() => {
@@ -33,7 +35,7 @@ export function DraggableWindow({ id, title, children }: PropsWithChildren<{ id:
       window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("pointerdown", onPointerDownGlobal, { capture: true } as any);
     };
-  }, [id, setPos, setActive]);
+  }, [id, setPos, bringToFront]);
 
   function onPointerDownTitle(e: React.PointerEvent) {
     isDragging.current = true;
@@ -58,7 +60,7 @@ export function DraggableWindow({ id, title, children }: PropsWithChildren<{ id:
           className={`cursor-grab ${titlebarClass} px-3 py-1 text-sm font-semibold shadow-[inset_0_1px_0_0_#ffffff]`}
           onPointerDown={onPointerDownTitle}
         >
-          {title ?? w.title}
+          {title ?? id}
         </div>
         <div className="bg-gray-100 p-3 text-sm text-gray-900">{children}</div>
       </div>

@@ -41,7 +41,7 @@ function safeParseYamlBlock(raw: string): any {
     data = {} as any;
     for (const line of raw.split(/\r?\n/)) {
       const m = line.match(/^\s*([A-Za-z0-9_.-]+)\s*:\s*(.*)$/);
-      if (m) data[m[1]] = m[2];
+      if (m) data[String(m[1] ?? '')] = m[2];
     }
     if (!data.text) data.text = raw;
   }
@@ -62,17 +62,19 @@ export function compileMarkdownDoc(md: string): CompiledDoc {
   const stack: Frame[] = [{ node: root, group: [] }];
 
   const flush = () => {
-    const frame = stack[stack.length - 1];
+    const frame = stack[stack.length - 1]!;
     if (!frame.group.length) return;
     const hast = toHast(frame.group);
-    const html = htmlToText(hast);
+    const html = htmlToText(hast) as string;
     const refs = extractRefs(html);
     (frame.node.children as UiNode[]).push({ id: genId(), type: "html", html, refs });
     frame.group = [];
   };
 
   const pushNode = (n: UiNode) => {
-    (stack[stack.length - 1].node.children as UiNode[]).push(n);
+    const fr = stack[stack.length - 1];
+    if (!fr) return;
+    (fr.node.children as UiNode[]).push(n);
   };
 
   for (const t of body) {
@@ -110,20 +112,22 @@ export function compileMarkdownDoc(md: string): CompiledDoc {
         continue;
       }
       // Unknown fence — treat as normal markdown (rendered by toHast)
-      stack[stack.length - 1].group.push(t);
+      const fr = stack[stack.length - 1];
+      if (fr) fr.group.push(t);
     } else if (t.type === "metadata") {
       // already handled
       continue;
     } else {
-      stack[stack.length - 1].group.push(t);
+      const fr2 = stack[stack.length - 1];
+      if (fr2) fr2.group.push(t);
     }
   }
 
   for (let i = stack.length - 1; i >= 0; i--) {
-    const frame = stack[i];
+    const frame = stack[i]!;
     if (frame.group.length) {
       const hast = toHast(frame.group);
-      const html = htmlToText(hast);
+      const html = htmlToText(hast) as string;
       const refs = extractRefs(html);
       (frame.node.children as UiNode[]).push({ id: genId(), type: "html", html, refs });
       frame.group = [];
@@ -141,9 +145,9 @@ function extractRefs(html: string): string[] {
   // Mustache-like tokens already interpolated later
   const re = /{{\s*([$]?[a-zA-Z0-9_.-]+)\s*}}/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(html)) !== null) refs.add(m[1]);
+  while ((m = re.exec(html)) !== null) if (m[1]) refs.add(String(m[1]));
   // $query.path inside img src or elsewhere
   const reDollar = /(\$[a-zA-Z0-9_.-]+)/g;
-  while ((m = reDollar.exec(html)) !== null) refs.add(m[1]);
+  while ((m = reDollar.exec(html)) !== null) if (m[1]) refs.add(String(m[1]));
   return Array.from(refs);
 }

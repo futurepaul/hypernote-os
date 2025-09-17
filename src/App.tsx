@@ -1,6 +1,6 @@
 import "./index.css";
 import { useEffect } from "react";
-import { useAtom, useSetAtom, useAtomValue } from 'jotai'
+import { useAtom, useSetAtom } from 'jotai'
 import { docsAtom, timeNowAtom, userAtom } from './state/appAtoms'
 import { hydrateDocsFromAssets, parseFrontmatterName } from './state/docs'
 import { DraggableWindow } from './components/DraggableWindow'
@@ -17,13 +17,7 @@ export function App() {
   useEffect(() => {
     ;(async () => setDocs(await hydrateDocsFromAssets(docs)))()
   }, [])
-  // Bridge custom event for pubkey updates from inputs (temporary)
-  const setUser = useSetAtom(userAtom)
-  useEffect(() => {
-    const handler = (e: any) => setUser(u => ({ ...u, pubkey: e.detail }))
-    window.addEventListener('hypernote:set-pubkey', handler as any)
-    return () => window.removeEventListener('hypernote:set-pubkey', handler as any)
-  }, [setUser])
+  // No bridge needed; inputs call Jotai actions directly now
 
   return (
     <main className="min-h-screen text-gray-900">

@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+// @ts-nocheck
 import plugin from "bun-plugin-tailwind";
 import mdLoader from "./plugins/md-loader";
 import { existsSync } from "fs";

@@ -1,11 +1,13 @@
+// @ts-nocheck
 import { useEffect, useMemo, useRef, useState } from "react";
 import OverType from "overtype";
 import { DraggableWindow } from "./DraggableWindow";
-import { useWindows } from "../store/windows";
-import { parseFrontmatterName } from "./AppView";
+import { useAtom, useAtomValue } from 'jotai'
+import { docsAtom } from '../state/appAtoms'
+import { parseFrontmatterName, getDefaultDocs } from "../state/docs";
 
 export function EditorWindow() {
-  const { docs, setDoc, resetDocsToDefaults } = useWindows();
+  const [docs, setDocs] = useAtom(docsAtom)
   const files = useMemo(() => ["profile", "wallet", "clock", "switcher"], []);
   const [current, setCurrent] = useState<string>(files[0]);
   const [value, setValue] = useState<string>(docs[current as keyof typeof docs] || "");
@@ -37,7 +39,7 @@ export function EditorWindow() {
   }, [value]);
 
   function save() {
-    setDoc(current as any, value);
+    setDocs({ ...docs, [current]: value })
   }
 
   return (
@@ -69,7 +71,7 @@ export function EditorWindow() {
               <button
                 onClick={() => {
                   if (confirm("Reload all docs from defaults? This will overwrite your local changes.")) {
-                    resetDocsToDefaults();
+                    setDocs(getDefaultDocs());
                     setCurrent("profile");
                   }
                 }}

@@ -23,7 +23,8 @@
 
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "hypersauce": ["./src/shims/hypersauce.d.ts"]
     },
 
     // Some stricter flags (disabled by default)

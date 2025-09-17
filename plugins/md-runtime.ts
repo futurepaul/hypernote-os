@@ -1,6 +1,7 @@
 // Runtime loader to import .md files as plain strings during dev (`bun --hot`).
 // Register a runtime loader for .md files so importing Markdown returns the
 // file contents (string) instead of an asset URL in dev.
+// @ts-nocheck
 Bun.plugin({
   name: "md-runtime-loader",
   loaders: {

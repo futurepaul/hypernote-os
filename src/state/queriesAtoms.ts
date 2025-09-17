@@ -2,10 +2,7 @@ import { atom } from 'jotai'
 import { atomFamily } from 'jotai/utils'
 
 // Per-window query scalars atom
-export const windowScalarsAtom = atomFamily<string, Record<string, any>>(
-  (id: string) => atom<Record<string, any>>({}),
-  (a, b) => a === b,
-)
+export const windowScalarsAtom = atomFamily((id: string) => atom<Record<string, any>>({}))
 
 // Helper to merge scalars with deep-equality on objects
 function deepEqual(a: any, b: any) {
@@ -24,4 +21,3 @@ export function mergeScalars(prev: Record<string, any>, next: Record<string, any
   }
   return changed ? out : prev
 }
-
