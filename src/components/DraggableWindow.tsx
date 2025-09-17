@@ -46,7 +46,7 @@ export function DraggableWindow({ id, title, children, contentClassName, onClose
     document.body.style.userSelect = "none";
   }
 
-  const titlebarClass = "bg-[#E6A86A] text-gray-900";
+  const titlebarClass = "bg-[var(--title-bg)] text-[var(--title-fg)]";
 
   return (
     <div
@@ -55,9 +55,9 @@ export function DraggableWindow({ id, title, children, contentClassName, onClose
       ref={dragRef}
       onMouseDown={() => bringToFront(id)}
     >
-      <div className="border border-gray-700 shadow-[inset_-2px_-2px_0_0_#4b5563,inset_2px_2px_0_0_#ffffff] bg-[#c9c3bb]">
+      <div className="border border-[var(--bevel-dark)] shadow-[inset_-2px_-2px_0_0_var(--bevel-dark),inset_2px_2px_0_0_var(--bevel-light)] bg-[var(--chrome-bg)]">
         <div
-          className={`relative cursor-grab ${titlebarClass} pl-6 pr-3 py-1 text-sm font-semibold shadow-[inset_0_1px_0_0_#ffffff]`}
+          className={`cursor-grab ${titlebarClass} px-2 py-1 text-sm font-semibold shadow-[inset_0_1px_0_0_var(--bevel-light)] flex items-center gap-2`}
           onPointerDown={onPointerDownTitle}
         >
           {onClose && (
@@ -65,12 +65,12 @@ export function DraggableWindow({ id, title, children, contentClassName, onClose
               aria-label="Close"
               onPointerDown={(e) => { e.stopPropagation(); }}
               onClick={(e) => { e.stopPropagation(); onClose?.(); }}
-              className="absolute left-1 top-1 w-4 h-4 border border-gray-700 bg-[#d8d2c9] shadow-[inset_-1px_-1px_0_0_#6b7280,inset_1px_1px_0_0_#ffffff] hover:bg-[#e4deD5]"
+              className="w-4 h-4 border border-[var(--bevel-dark)] bg-[var(--win-bg)] shadow-[inset_-1px_-1px_0_0_var(--bevel-dark),inset_1px_1px_0_0_var(--bevel-light)] hover:brightness-105"
             />
           )}
           {title ?? id}
         </div>
-        <div className={contentClassName ?? "bg-[#d8d2c9] p-3 text-sm text-gray-900"}>{children}</div>
+        <div className={contentClassName ?? "bg-[var(--win-bg)] p-3 text-sm text-gray-900"}>{children}</div>
       </div>
     </div>
   );

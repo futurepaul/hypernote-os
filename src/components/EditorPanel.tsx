@@ -44,7 +44,7 @@ export function EditorPanel() {
   return (
     <div className="flex h-[420px] w-[760px]">
       {/* Sidebar */}
-      <div className="w-48 border-r border-gray-500 bg-gray-100">
+      <div className="w-48 border-r border-[var(--bevel-dark)] bg-[var(--chrome-bg)]">
         {files.map(fid => {
           const name = parseFrontmatterName(docs[fid as keyof typeof docs] || "") || fid
           const active = fid === current
@@ -52,8 +52,8 @@ export function EditorPanel() {
             <button
               key={fid}
               onClick={() => setCurrent(fid)}
-              className={`w-full text-left px-3 py-2 text-sm border-b border-gray-300 ${
-                active ? "bg-yellow-200" : "hover:bg-gray-200"
+              className={`w-full text-left px-3 py-2 text-sm border-b border-[var(--bevel-dark)] ${
+                active ? "bg-[var(--title-bg-light)]" : "hover:bg-[var(--win-bg)]"
               }`}
             >
               {name}
@@ -63,8 +63,8 @@ export function EditorPanel() {
       </div>
       {/* Editor */}
       <div className="flex-1 flex flex-col">
-        <div className="flex items-center justify-between px-2 py-1 border-b border-gray-400 bg-gray-200">
-          <div className="text-xs text-gray-700">{current}.md</div>
+        <div className="flex items-center justify-between px-2 py-1 border-b border-[var(--bevel-dark)] bg-[var(--chrome-bg)]">
+          <div className="text-xs text-gray-800">{current}.md</div>
           <div className="flex gap-2">
             <button
               onClick={async () => {
@@ -74,12 +74,12 @@ export function EditorPanel() {
                   setCurrent("profile")
                 }
               }}
-              className="bg-gray-200 hover:bg-gray-300 border border-gray-600 rounded px-3 py-1 text-sm"
+              className="bg-[var(--win-bg)] hover:brightness-105 border border-[var(--bevel-dark)] rounded px-3 py-1 text-sm"
               title="Reload default docs"
             >
               Reset Docs
             </button>
-            <button onClick={save} className="bg-gray-300 hover:bg-gray-400 border border-gray-600 rounded px-3 py-1 text-sm">
+            <button onClick={save} className="bg-[var(--chrome-bg)] hover:brightness-105 border border-[var(--bevel-dark)] rounded px-3 py-1 text-sm">
               Save
             </button>
           </div>

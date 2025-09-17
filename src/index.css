@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+:root {
+  --title-bg: #E19959; /* warm orange (complements teal) */
+  --title-bg-light: #F2C08A; /* lighter variant for accents */
+  --title-fg: #111111;
+  --teal: #2C5F66; /* deep teal */
+  --chrome-bg: #c9c3bb; /* window chrome */
+  --win-bg: #d8d2c9; /* content surface */
+  --bevel-light: #ffffff;
+  --bevel-dark: #6b7280; /* slate-ish */
+}
+
 /* Page background: tile a 4x900 PNG horizontally with no scaling */
 body {
   background-image: url("./bg.png");

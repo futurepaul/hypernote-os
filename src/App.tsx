@@ -36,7 +36,7 @@ export function App() {
             key={id}
             id={id}
             title={parseFrontmatterName(doc) || id}
-            contentClassName={id === 'editor' ? "bg-gray-100 text-sm text-gray-900 p-0" : undefined}
+            contentClassName={id === 'editor' ? "bg-[var(--win-bg)] text-sm text-gray-900 p-0" : undefined}
             onClose={() => closeWindow(id)}
           >
             {id === 'editor' ? <EditorPanel /> : id === 'apps' ? <AppSwitcherPanel /> : <AppView id={id} />}
