@@ -13,11 +13,18 @@ function getPath(obj: any, path: string): any {
 function mdImagesToHtml(text: string): string {
   // Convert Markdown image syntax to HTML <img>, minimal implementation
   // ![alt](url)
-  return text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_m, alt, url) => {
+  let out = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_m, alt, url) => {
     const a = String(alt || '').replace(/"/g, '&quot;');
     const u = String(url || '').replace(/"/g, '&quot;');
     return `<img src="${u}" alt="${a}">`;
   });
+  // Fallback: some templated images may be rendered as plain text: "alt(url)" inside <p>
+  out = out.replace(/<p>\s*([^<>()]+)\((https?:[^)]+)\)\s*<\/p>/g, (_m, alt, url) => {
+    const a = String(alt || '').trim().replace(/"/g, '&quot;');
+    const u = String(url || '').trim().replace(/"/g, '&quot;');
+    return `<p><img src="${u}" alt="${a}"></p>`;
+  });
+  return out;
 }
 
 function interpolate(text: string, globals: any, windowId: string, queryScalars: Record<string, Record<string, any>>) {
