@@ -18,3 +18,10 @@ body {
 .app-markdown p {
   margin: 0.25rem 0;
 }
+
+/* Markdown image support */
+.app-markdown img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.25rem;
+}

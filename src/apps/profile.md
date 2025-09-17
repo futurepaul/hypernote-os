@@ -13,6 +13,8 @@ Paste your nsec and view profile for {{user.pubkey}}.
 
 # Name: {{ $profile.name }}
 
+![avatar]({{ $profile.picture }})
+
 ```input
 text: Paste nsec or npub here...
 ```
