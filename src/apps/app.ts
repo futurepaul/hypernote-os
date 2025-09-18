@@ -67,4 +67,10 @@ icon: edit.png
 ---
 Edit app documents on the right; click Save to persist.
 `,
+  system: `---
+name: System Menu
+icon: folder.png
+---
+System-wide actions.
+`,
 };

@@ -3,7 +3,7 @@ import { nip19, getPublicKey } from "nostr-tools";
 import { compileMarkdownDoc, type UiNode } from "../compiler";
 import { useAtomValue, useAtom } from 'jotai'
 import { windowScalarsAtom } from '../state/queriesAtoms'
-import { docAtom, userAtom, relaysAtom, windowTimeAtom } from '../state/appAtoms'
+import { docAtom, userAtom, relaysAtom, windowTimeAtom, debugAtom } from '../state/appAtoms'
 import { formsAtom } from '../state/formsAtoms'
 import { queryRuntime } from '../queries/runtime'
 import { interpolate as interp, resolveImgDollarSrc } from '../interp/interpolate'
@@ -198,6 +198,7 @@ export function AppView({ id }: { id: string }) {
 
   // Per-render logging to trace causes
   const renderCount = useRef(0);
+  const debug = useAtomValue(debugAtom)
   useEffect(() => {
     const n = ++renderCount.current;
     try {
@@ -211,14 +212,14 @@ export function AppView({ id }: { id: string }) {
     console.log(`[Cause] ${id}: doc changed`, { len: doc.length });
   }, [doc]);
   useEffect(() => {
-    if (usesTime) console.log(`[Cause] ${id}: time.now`, timeNow);
-  }, [timeNow, usesTime]);
+      if (usesTime && debug) console.log(`[Cause] ${id}: time.now`, timeNow);
+  }, [timeNow, usesTime, debug]);
   useEffect(() => {
-    console.log(`[Cause] ${id}: user.pubkey`, globalsUser?.pubkey);
-  }, [globalsUser?.pubkey]);
+    if (debug) console.log(`[Cause] ${id}: user.pubkey`, globalsUser?.pubkey);
+  }, [globalsUser?.pubkey, debug]);
   useEffect(() => {
-    console.log(`[Cause] ${id}: queryScalars`, Object.keys(windowScalars || {}));
-  }, [windowScalars]);
+    if (debug) console.log(`[Cause] ${id}: queryScalars`, Object.keys(windowScalars || {}));
+  }, [windowScalars, debug]);
 
   // No artificial tick; re-render comes from globals/time.now store updates
 

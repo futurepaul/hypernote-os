@@ -66,6 +66,7 @@ export const relaysAtom = atom<string[]>([
   'wss://relay.damus.io',
   'wss://relay.snort.social',
 ])
+export const debugAtom = atom<boolean>(false)
 
 export const userAtom = atom<{ pubkey: string | null; profile?: any }>({ pubkey: null })
 export const timeNowAtom = atom<number>(Math.floor(Date.now() / 1000))

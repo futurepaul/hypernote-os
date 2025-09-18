@@ -7,6 +7,7 @@ import { DraggableWindow } from './components/DraggableWindow'
 import { AppView } from './components/AppView'
 import { EditorPanel } from './components/EditorPanel'
 import { AppSwitcherPanel } from './components/AppSwitcherPanel'
+import { SystemMenuPanel } from './components/SystemMenuPanel'
 
 export function App() {
   const setTimeNow = useSetAtom(timeNowAtom)
@@ -39,7 +40,7 @@ export function App() {
             contentClassName={id === 'editor' ? "bg-[var(--win-bg)] text-sm text-gray-900 p-0" : undefined}
             onClose={() => closeWindow(id)}
           >
-            {id === 'editor' ? <EditorPanel /> : id === 'apps' ? <AppSwitcherPanel /> : <AppView id={id} />}
+            {id === 'editor' ? <EditorPanel /> : id === 'apps' ? <AppSwitcherPanel /> : id === 'system' ? <SystemMenuPanel /> : <AppView id={id} />}
           </DraggableWindow>
         )
       })}
