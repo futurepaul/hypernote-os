@@ -89,6 +89,7 @@ export function useAction(name?: string) {
         bringToFront(result.id)
       } catch (e) {
         console.warn('@install_app failed', e)
+        alert('Install failed: ' + (e as any)?.message)
       }
       return
     }

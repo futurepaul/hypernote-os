@@ -70,26 +70,34 @@ export async function installByNaddr(naddr: string, relays: string[]): Promise<{
     subscription = sub.subscribe({
       next: (map: Map<string, any>) => {
         try {
-          const raw = map.get('$app')
-          console.log('[installByNaddr] snapshot', raw)
-          if (!raw) return
-          const obj = typeof raw === 'string' ? safeJson(raw) : raw
-          if (!obj || typeof obj !== 'object') return
-          let meta = obj.meta
-          let ast = obj.ast
-          if ((!meta || !ast) && typeof obj.content === 'string') {
-            const parsed = safeJson(obj.content)
-            if (parsed && typeof parsed === 'object') {
-              meta = parsed.meta
-              ast = parsed.ast
-            }
-          }
-          if (!meta || !ast) return
-          const md = decompile({ meta, ast } as any)
-          const id = String(meta?.name ? slugify(meta.name) : identifier)
-          cleanup()
-          resolve({ id, markdown: md, meta, ast })
-        } catch (e) { cleanup(); reject(e) }
+      const raw = map.get('$app')
+      console.log('[installByNaddr] snapshot', raw)
+      if (!raw) return
+      const obj = typeof raw === 'string' ? safeJson(raw) : raw
+      if (!obj || typeof obj !== 'object') return
+      let meta = obj.meta
+      let ast = obj.ast
+      if ((!meta || !ast) && typeof obj.content === 'string') {
+        const parsed = safeJson(obj.content)
+        if (parsed && typeof parsed === 'object') {
+          meta = parsed.meta
+          ast = parsed.ast
+        }
+      }
+      if (!meta || !ast) {
+        console.warn('[installByNaddr] missing meta/ast in snapshot')
+        return
+      }
+      try {
+        const md = decompile({ meta, ast } as any)
+        const id = String(meta?.name ? slugify(meta.name) : identifier)
+        cleanup()
+        resolve({ id, markdown: md, meta, ast })
+      } catch (err) {
+        cleanup()
+        reject(err instanceof Error ? err : new Error(String(err)))
+      }
+    } catch (e) { cleanup(); reject(e) }
       },
       error: (e: any) => { cleanup(); reject(e) },
     })

@@ -57,7 +57,13 @@ Goal: Publish current app to Nostr using Hypersauce API.
   - Local drafts: on publish success, install by returned `naddr` and replace draft with pointer.
 - Acceptance: editor can publish; app can be re‑installed anywhere by naddr and renders identically.
 
-Status: PARTIAL. Generic `login()` + `publishEvent()` added to Hypersauce; `publishApp()` wrapper drafted. Editor “Publish” button and swap draft→naddr install — TODO.
+Status: PARTIAL. Generic `login()` + `publishEvent()` added to Hypersauce; `publishApp()` wrapper and installer wired with markdown AST. TODO: extend App Store to refresh entries post-publish & expose install feedback in UI.
+
+#### Phase 2.5 — Markdown AST Hardening (new)
+- Switch runtime to use very-small-parser MDAST throughout; remove HTML rendering path and reject inline HTML on compile.
+- Preserve YAML arrays and structural metadata during compile/decompile.
+- Future: render directly from MDAST without converting to HTML once UI supports it (safer interpolation, less mutation).
+- Status: PARTIAL (base AST swap complete).
 
 ### Phase 3 — Actions (write to Nostr)
 Goal: Let apps define write actions using a minimal, explicit schema.
