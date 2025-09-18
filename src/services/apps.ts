@@ -17,11 +17,15 @@ export async function publishApp({ meta, ast }: { meta: any; ast: any }, relays:
   if (!client) throw new Error('Hypersauce client not initialized')
   const name = String(meta?.name || 'app')
   const d = slugify(name)
-  const content = JSON.stringify({ version: '1.2.0', meta, ast })
+  const version = '1.2.0'
+  const content = JSON.stringify({ version, meta, ast })
+  const appType = String(meta?.type || 'application')
   const tags: string[][] = [
     ['d', d],
-    ['hypernote', '1.2.0'],
-    ['hypernote-type', String(meta?.type || 'application')],
+    ['hypernote', version],
+    ['t', 'hypernote'],
+    ['t', `hypernote-${appType}`],
+    ['t', `hypernote-v${version}`],
   ]
   if (meta?.name) tags.push(['title', String(meta.name)])
   if (meta?.description) tags.push(['description', String(meta.description)])
@@ -64,9 +68,13 @@ export async function installByNaddr(naddr: string, relays: string[]): Promise<{
     subscription = sub.subscribe({
       next: (map: Map<string, any>) => {
         try {
-          const obj = map.get('$app') || {}
-          const meta = obj.meta || {}
-          const ast = obj.ast || []
+          const raw = map.get('$app')
+          if (!raw) return
+          const obj = typeof raw === 'string' ? safeJson(raw) : raw
+          if (!obj || typeof obj !== 'object') return
+          const meta = obj.meta
+          const ast = obj.ast
+          if (!meta || !ast) return
           const md = decompile({ meta, ast } as any)
           const id = String(meta?.name ? slugify(meta.name) : identifier)
           cleanup()
@@ -76,4 +84,8 @@ export async function installByNaddr(naddr: string, relays: string[]): Promise<{
       error: (e: any) => { cleanup(); reject(e) },
     })
   })
+}
+
+function safeJson(input: string): any {
+  try { return JSON.parse(input) } catch { return null }
 }
