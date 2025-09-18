@@ -138,7 +138,7 @@ export function EditorPanel() {
   }
 
   return (
-    <div className="flex h-[460px] w-[820px]">
+    <div className="flex h-[80vh] w-[820px]">
       {/* Sidebar */}
       <div className="w-52 border-r border-[var(--bevel-dark)] bg-[var(--chrome-bg)]">
         {files.map(fid => {
@@ -158,7 +158,7 @@ export function EditorPanel() {
         })}
       </div>
       {/* Editor */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col overflow-hidden">
         {/* Menubar */}
         <div className="flex items-center gap-2 px-2 py-1 bg-[var(--accent)] text-white border-b border-[var(--bevel-dark)]">
           <div className="font-semibold text-sm mr-2">File</div>
@@ -195,12 +195,7 @@ export function EditorPanel() {
             className="ml-4 px-2 py-0.5 text-sm bg-[var(--win-bg)] text-gray-900 border border-[var(--bevel-dark)] shadow-[inset_-1px_-1px_0_0_var(--bevel-dark),inset_1px_1px_0_0_var(--bevel-light)] hover:brightness-105"
           >Export .md</button>
         </div>
-        {/* Path and actions */}
-        <div className="flex items-center justify-between px-2 py-1 border-b border-[var(--bevel-dark)] bg-[var(--chrome-bg)]">
-          <div className="text-xs text-gray-800">{current}.md</div>
-          <div className="text-xs text-gray-500">Use File menu for actions</div>
-        </div>
-        <div ref={containerRef} style={{ height: 360 }} />
+        <div ref={containerRef} className="flex-1 overflow-hidden" style={{ height: '100%' }} />
       </div>
     </div>
   )

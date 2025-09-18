@@ -1,24 +1,14 @@
-import { getDefaultStore } from 'jotai'
-
-function getPath(obj: any, path: string): any {
-  return path.split('.').reduce((acc, k) => (acc && typeof acc === 'object' ? acc[k] : undefined), obj)
-}
+import { resolveDollar, resolveDollarPath } from './resolveDollar'
 
 export function interpolate(text: string, scope: { globals: any; queries: Record<string, any> }) {
   if (!text) return ''
-  return text.replace(/{{\s*([$]?[a-zA-Z0-9_\.-]+)\s*}}/g, (_m, key: string) => {
-    if (key === 'time.now') return String(scope.globals?.time?.now ?? Math.floor(Date.now() / 1000))
-    if (key.startsWith('$')) {
-      const [qidRaw, ...rest] = key.split('.')
-      const qid = String(qidRaw)
-      const base = scope.queries[qid]
-      if (base == null) return ''
-      if (!rest.length) return String(base ?? '')
-      const v = getPath(base, rest.join('.'))
-      return v == null ? '' : String(v)
+  return text.replace(/{{\s*(.+?)\s*}}/g, (_m, expr: string) => {
+    const options = expr.split('||').map(part => part.trim()).filter(Boolean)
+    for (const option of options.length ? options : ['']) {
+      const value = resolveExpression(option, scope)
+      if (value != null && value !== '') return String(value)
     }
-    const val = getPath(scope.globals, key)
-    return val == null ? '' : String(val)
+    return ''
   })
 }
 
@@ -37,4 +27,40 @@ export function resolveImgDollarSrc(html: string, queries: Record<string, any>) 
     }
     return m
   })
+}
+
+function getPath(obj: any, path: string): any {
+  if (!path) return undefined
+  return path.split('.').reduce((acc, k) => (acc && typeof acc === 'object' ? acc[k] : undefined), obj)
+}
+
+function resolveExpression(option: string, scope: { globals: any; queries: Record<string, any> }): unknown {
+  if (!option) return undefined
+  const trimmed = option.trim()
+  if (!trimmed) return undefined
+  if (trimmed.startsWith('$')) {
+    const resolved = resolveDollar(trimmed, scope.queries)
+    if (resolved) {
+      return resolved.suffix ? `${resolved.value}${resolved.suffix}` : resolved.value
+    }
+    return resolveDollarFromGlobals(trimmed, scope.globals)
+  }
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    return trimmed.slice(1, -1)
+  }
+  if (/^-?\d+(\.\d+)?$/.test(trimmed)) return trimmed
+  if (trimmed === 'true') return 'true'
+  if (trimmed === 'false') return 'false'
+  return undefined
+}
+
+function resolveDollarFromGlobals(token: string, globals: any): unknown {
+  const match = token.match(/^(\$[A-Za-z0-9_.-]+)(.*)$/);
+  if (!match) return undefined;
+  const path = match[1].slice(1);
+  const suffix = match[2] || '';
+  const base = getPath(globals, path);
+  if (base == null) return undefined;
+  const value = String(base);
+  return suffix ? `${value}${suffix}` : value;
 }

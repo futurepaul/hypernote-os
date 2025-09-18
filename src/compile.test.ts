@@ -40,10 +40,25 @@ describe("compiler", () => {
   });
 
   test("preserves yaml arrays in frontmatter", () => {
-    const md = `---\nname: Test\n"$items":\n  authors: [user.pubkey]\n---\nhi\n`;
+    const md = `---\nname: Test\n"$items":\n  authors: [$user.pubkey]\n---\nhi\n`;
     const compiled = compileMarkdownDoc(md);
     expect(Array.isArray(compiled.meta["$items"]?.authors)).toBe(true);
     const roundtrip = compileMarkdownDoc(decompile(compiled));
-    expect(roundtrip.meta["$items"].authors).toEqual(['user.pubkey']);
+    expect(roundtrip.meta["$items"].authors).toEqual(['$user.pubkey']);
+  });
+
+  test("app store markdown normalizes inline image references", () => {
+    const { ast } = compileMarkdownDoc(defaultApps["app-store"]);
+    expect(astContainsImageNode(ast)).toBe(true);
   });
 });
+
+function astContainsImageNode(ast: any): boolean {
+  if (Array.isArray(ast)) return ast.some(node => astContainsImageNode(node));
+  if (ast && typeof ast === 'object') {
+    if (ast.type === 'image') return true;
+    if (ast.type === 'markdown' && Array.isArray(ast.markdown) && astContainsImageNode(ast.markdown)) return true;
+    if (Array.isArray(ast.children) && astContainsImageNode(ast.children)) return true;
+  }
+  return false;
+}

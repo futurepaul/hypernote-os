@@ -33,6 +33,19 @@ describe("round-trip compile/decompile", () => {
       const c2 = compileMarkdownDoc(md2)
       expect(normalizeMeta(c2.meta)).toEqual(normalizeMeta(c1.meta))
       expect(stripIds(c2.ast)).toEqual(stripIds(c1.ast))
+      if (id === 'app-store') {
+        expect(hasNoImageReferences(c2.ast)).toBe(true)
+      }
     })
   }
 })
+
+function hasNoImageReferences(ast: any): boolean {
+  if (Array.isArray(ast)) return ast.every(hasNoImageReferences)
+  if (ast && typeof ast === 'object') {
+    if (ast.type === 'imageReference') return false
+    if (Array.isArray(ast.children) && !hasNoImageReferences(ast.children)) return false
+    if (Array.isArray(ast.markdown) && !hasNoImageReferences(ast.markdown)) return false
+  }
+  return true
+}

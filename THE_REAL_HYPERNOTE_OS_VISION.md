@@ -75,6 +75,11 @@ Status: PARTIAL. Generic `login()` + `publishEvent()` added to Hypersauce; `publ
   2. Update `queryRuntime` to stop injecting fallback data; it simply returns what Hypersauce produced (events, tuples, maps).
   3. Rewrite bundled apps (App Store, etc.) so queries compute `display_label`, `avatar_url`, etc., and markdown references tuple indices (`{{ app.0.meta.name }}`, `{{ app.1.picture }}`) or pipe-produced fields (`{{ app.profile.display_label }}` when the query writes that).
   4. Adjust tests to assert that compile/decompile + render works with tuple access, and add regression coverage for rejecting html while ensuring tuple interpolation passes through untouched.
+- Renderer friction log (keep pruning this list as we land fixes):
+  - Hypersauce emits `Map` instances and unparsed events; we currently normalise them in `queryRuntime`. A JSON-ready mode would collapse this extra pass.
+  - Asset URLs do not advertise display metadata, so the renderer parses query strings such as `?w=48`. Hypersauce (or the pipe helpers) could surface `asset.width`/`asset.height` so the view never guesses.
+  - Markdown mixed `$profile.picture` and `{{ app.1.picture }}` forms. We standardised on moustache expressions and flag bare `$` usage, but the `||` fallback syntax still needs first-class support (today the renderer only evaluates the first truthy operand). Aim to revive this once Hypersauce exposes richer tuple helpers.
+  - `resolveDollar` proved the value of shared interpolation utilities. Future nodes (`element`, `action`, etc.) should use similar helpers so components stay declarative rather than hand-parsing scope each time.
 - Acceptance: deleting `AppView.tsx` should essentially break rendering; adding back the minimal renderer restores everything without re-implementing special cases.
 
 ### Phase 3 — Actions (write to Nostr)
@@ -353,6 +358,7 @@ Assets (Blossom)
 Dock & Editor
 13. Single‑file editor only (no multi‑pane)? “Edit” button per app spawns editor window — confirmed?
 13. ANSWER no multi-pane tabbed editor but we should be able to have unlimited editors open (both for drafting new apps, and one editor open per-app if the user hits edit on that app). we should probably have "context menu" that has system wide commands like login with npub, create new file, and I'm sure other stuff we'll think of) (this is like old nextos menu)
+    - FUTURE: add resizable window chrome (drag handles snapping to grid) so tall apps/editors can expand without relying on internal scroll. Target after the rest of Phase 2.5 once window layout stabilises.
 
 14. On publish of an edited naddr app: do we overwrite the original (replaceable) or publish new and update the list to the new naddr?
 14. ANSWER yes overwrite when it has the same name. the name becomes a d-tag-like-this. this is fine because d tags are per author so it's up to the author if they want to overwrite.

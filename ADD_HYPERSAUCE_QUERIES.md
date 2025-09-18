@@ -8,6 +8,7 @@
   - Starts a live subscription only when `globals.user.pubkey` is present (drop/stop otherwise).
   - Publishes snapshots to a `queries` map in Zustand (scoped by window/app id).
   - Supports clean start/stop on doc change, relay change, or pubkey change.
+  - Normalises results into plain JSON (convert Maps/tuples), backfills `parsed` from `content` when missing, and derives `naddr` from kind/pubkey/`d` tag for convenience.
 
 **Plan (Minimal, Clean Cut)**
 1) Add dependency and wire client
@@ -42,7 +43,7 @@
        - Scalar: `{{queries.$display_name}}`.
        - Arrays: `{{queries.$mentions.length}}`.
        - Tuple arrays: use custom components later; for the MVP, we show counts or simple mapping.
-   - Keep `{{user.*}}` and `{{time.now}}` behavior unchanged.
+   - Keep `{{$user.*}}` and `{{$time.now}}` behavior unchanged.
 
 5) Profile demo doc
    - Update `src/apps/profile.md` frontmatter to include a `$profile_display_name` query (from Hypersauce README):
@@ -103,8 +104,17 @@
 - Full query UI components for tuples (`enrich`) or event lists (we’ll add renderer components next).
 - Persisting query snapshots to localStorage.
 
-**Nice‑to‑have follow‑ups**
+**Nice-to-have follow-ups**
 - Add a small debug panel per window to show active `$queries` and their latest snapshot shapes.
 - Form binding for inputs (e.g., `name:`) to use in action args and queries.
 - Add Tailwind Typography for prettier Markdown rendering.
 
+## Pipe Helper Reference (Phase 2.5)
+
+- `first` — take the first item from an event list so downstream pipes receive a scalar instead of an array.
+- `json: { from, as }` — parse a JSON field (usually `content`) and expose the parsed tree under `as` (defaults to `parsed`).
+- `get: path` — pluck a nested value from the current object; useful for surfacing `parsed.meta` fields.
+- `coalesce: [a, b, ...]` — return the first truthy value from the list; handy for display-name fallbacks.
+- `enrich: { with, args, label }` — run another query per item and attach the result using `label` (tuples land in the renderer as `[item, enriched]`).
+
+Keep helpers focused on shaping data so the renderer stays generic. If a new transform becomes necessary, add it to this list as part of the same change.
