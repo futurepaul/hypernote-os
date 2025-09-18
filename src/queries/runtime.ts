@@ -2,9 +2,9 @@
 // query subscriptions and emits only small derived scalars back to the store.
 
 import { getDefaultStore } from 'jotai'
+import { nip19 } from 'nostr-tools'
 import { hypersauceClientAtom } from '../state/hypersauce'
 import { mergeScalars, windowScalarsAtom } from '../state/queriesAtoms'
-import { nip19 } from 'nostr-tools'
 
 type Unsub = () => void;
 
@@ -62,12 +62,14 @@ class QueryRuntime {
       // Gate on pubkey: if missing, do not start
       if (!context?.user?.pubkey) return;
 
+      const resolvedDoc = resolveQueryDoc(doc, context)
+
       const sub = this.client
-        .runQueryDocumentLive(doc, context)
+        .runQueryDocumentLive(resolvedDoc, context)
         .subscribe({
           next: (resultMap: Map<string, any>) => {
             const scalars: Record<string, any> = {};
-            for (const [qid, value] of resultMap) scalars[qid] = decorateValue(value);
+            for (const [qid, value] of resultMap) scalars[qid] = toRenderable(value);
             // Push into per-window Jotai atom to avoid global re-renders
             try {
               const store = getDefaultStore();
@@ -90,23 +92,64 @@ class QueryRuntime {
 }
 
 export const queryRuntime = new QueryRuntime();
-// @ts-nocheck
 
-function decorateValue(value: any): any {
-  if (Array.isArray(value)) return value.map(decorateValue);
-  if (!value || typeof value !== 'object') return value;
-  if (typeof value.kind === 'number' && typeof value.pubkey === 'string') {
-    const out: any = { ...value };
-    if (typeof out.pubkey === 'string' && !out.npub) {
-      try { out.npub = nip19.npubEncode(out.pubkey); } catch {}
-    }
-    if (typeof out.pubkey === 'string' && Array.isArray(out.tags)) {
-      const identifier = out.tags.find((tag: any) => Array.isArray(tag) && tag[0] === 'd')?.[1];
-      if (identifier && !out.naddr) {
-        try { out.naddr = nip19.naddrEncode({ kind: out.kind, pubkey: out.pubkey, identifier: String(identifier) }); } catch {}
-      }
-    }
-    return out;
+function resolveQueryDoc(doc: any, context: any): any {
+  return deepResolve(doc, context)
+}
+
+function deepResolve(value: any, context: any): any {
+  if (Array.isArray(value)) return value.map(item => deepResolve(item, context))
+  if (value && typeof value === 'object') {
+    const out: Record<string, any> = {}
+    for (const [k, v] of Object.entries(value)) out[k] = deepResolve(v, context)
+    return out
   }
-  return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (/^\$[A-Za-z0-9_.-]+$/.test(trimmed)) {
+      const resolved = resolveContextPath(trimmed, context)
+      if (resolved !== undefined) return resolved
+    }
+  }
+  return value
+}
+
+function resolveContextPath(token: string, context: any): any {
+  const path = token.startsWith('$') ? token.slice(1) : token
+  if (!path) return undefined
+  const parts = path.split('.').filter(Boolean)
+  let current: any = context
+  for (const part of parts) {
+    if (current == null || typeof current !== 'object') return undefined
+    current = current[part]
+  }
+  return current
+}
+
+function toRenderable(value: any): any {
+  if (value instanceof Map) return toRenderable(Object.fromEntries(value.entries()));
+  if (Array.isArray(value)) return value.map(item => toRenderable(item));
+  if (!value || typeof value !== 'object') return value;
+
+  const out: Record<string, any> = {};
+  for (const [key, val] of Object.entries(value)) out[key] = toRenderable(val);
+
+  if (typeof out.kind === 'number' && typeof out.pubkey === 'string' && Array.isArray(out.tags)) {
+    const identifier = findDTag(out.tags);
+    if (identifier && !out.naddr) {
+      try { out.naddr = nip19.naddrEncode({ kind: out.kind, pubkey: out.pubkey, identifier: String(identifier) }); } catch {}
+    }
+    if (!out.parsed && typeof out.content === 'string') {
+      try { out.parsed = JSON.parse(out.content); } catch {}
+    }
+  }
+
+  return out;
+}
+
+function findDTag(tags: any[]): string | null {
+  for (const tag of tags) {
+    if (Array.isArray(tag) && tag[0] === 'd' && typeof tag[1] === 'string') return tag[1];
+  }
+  return null;
 }

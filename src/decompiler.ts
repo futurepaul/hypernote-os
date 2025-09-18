@@ -26,9 +26,9 @@ function encodeNode(n: UiNode): string {
     const text = markdownToText(nodes || [])
     return text.trim()
   }
-  if (n.type === 'button' || n.type === 'input') {
+  if (n.type === 'button' || n.type === 'input' || n.type === 'markdown_editor') {
     const y = YAML.stringify(n.data || {}).trimEnd()
-    const lang = n.type
+    const lang = n.type === 'markdown_editor' ? 'markdown-editor' : n.type
     return `\n\`\`\`${lang}\n${y}\n\`\`\`\n`
   }
   if (n.type === 'hstack' || n.type === 'vstack') {

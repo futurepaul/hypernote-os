@@ -1,15 +1,15 @@
-import { useMemo, useEffect, useState, useRef, Fragment, type ReactNode } from "react";
+import { useMemo, useEffect, useState, useRef, useCallback, Fragment, type ReactNode } from "react";
+import OverType from "overtype";
 import { nip19, getPublicKey } from "nostr-tools";
 import { compileMarkdownDoc, type UiNode } from "../compiler";
-import { useAtomValue, useAtom } from 'jotai'
+import { useAtomValue, useAtom, useSetAtom } from 'jotai'
 import { windowScalarsAtom } from '../state/queriesAtoms'
 import { docAtom, userAtom, relaysAtom, windowTimeAtom, debugAtom } from '../state/appAtoms'
 import { formsAtom } from '../state/formsAtoms'
 import { queryRuntime } from '../queries/runtime'
-import { interpolate as interp, resolveImgDollarSrc } from '../interp/interpolate'
-import { useAction, normalizeActionName } from '../state/actions'
-import { toHast } from 'very-small-parser/lib/markdown/block/toHast'
-import { toText as htmlToText } from 'very-small-parser/lib/html/toText'
+import { interpolate as interp } from '../interp/interpolate'
+import { useAction, normalizeActionName, docActionsAtom, buildDocActionMap } from '../state/actions'
+import { renderMarkdownAst, type MarkdownScope } from './MarkdownRenderer'
 
 type Node = UiNode;
 
@@ -25,11 +25,10 @@ function MarkdownNode({ n, globals, queries }: { n: Node; globals: any; queries:
     const q: Record<string, any> = (queries && typeof queries === 'object') ? queries : {}
     const getPath = (obj: any, path: string) => path.split('.').reduce((acc, k) => (acc && typeof acc === 'object') ? acc[k] : undefined, obj)
     return refs.map(ref => {
-      if (ref === 'time.now') return String(globals?.time?.now ?? '')
       if (ref.startsWith('$')) {
         const [id, ...rest] = ref.split('.')
         const idKey = String(id)
-        const base = (q as any)[idKey]
+        const base = (q as any)[idKey] !== undefined ? (q as any)[idKey] : getPath(globals, idKey)
         const v = rest.length ? getPath(base, rest.join('.')) : base
         return JSON.stringify(v ?? '')
       }
@@ -37,24 +36,20 @@ function MarkdownNode({ n, globals, queries }: { n: Node; globals: any; queries:
     })
   }, [n.refs, queries, globals])
 
-  const html = useMemo(() => {
-    const tokens = (n.markdown as any) ?? []
-    const cloned = JSON.parse(JSON.stringify(tokens))
-    const hast = toHast(cloned)
-    const raw = htmlToText(hast) as string
-    const interpolated = interpolateText(raw, globals, queries)
-    return resolveImgDollarSrc(interpolated, queries || {})
-    // eslint-disable-next-line react-hooks-exhaustive-deps
-  }, [n.id, ...deps])
+  const scope = useMemo<MarkdownScope>(() => ({ globals, queries }), [globals, queries])
+  const content = useMemo(() => {
+    const tokens = Array.isArray(n.markdown) ? n.markdown : []
+    return renderMarkdownAst(tokens, scope)
+  }, [n.id, scope, ...deps])
 
-  return <div className="app-markdown" dangerouslySetInnerHTML={{ __html: html }} />
+  return <div className="app-markdown">{content}</div>
 }
 
 function ButtonNode({ text, globals, action, windowId, queries, payloadSpec }: { text?: string; globals: any; action?: string; windowId: string; queries: Record<string, any>; payloadSpec?: any }) {
   const label = (interpolateText(String(text ?? ""), globals, queries).trim() || "Button");
   const payload = useMemo(() => buildPayload(payloadSpec, globals, queries), [payloadSpec, globals, queries])
-  const run = useAction(action)
-  const setPub = useAction('@set_pubkey')
+  const run = useAction(action, windowId)
+  const setPub = useAction('@set_pubkey', windowId)
   return (
     <button
       className="bg-gray-200 hover:bg-gray-300 text-gray-900 border border-gray-500 rounded px-3 py-1 text-sm"
@@ -100,7 +95,7 @@ function ButtonNode({ text, globals, action, windowId, queries, payloadSpec }: {
             if (process.env.NODE_ENV !== 'production') {
               console.log('[ButtonNode] payload', payload)
             }
-            run(payload).catch(e => console.warn('action error', e))
+            run(payload, { windowId, globals, queries }).catch(e => console.warn('action error', e))
           })
         } else {
           console.log("ButtonNode: no action defined");
@@ -115,7 +110,7 @@ function ButtonNode({ text, globals, action, windowId, queries, payloadSpec }: {
 function InputNode({ text, globals, windowId, name, queries }: { text: string; globals: any; windowId: string; name?: string; queries: Record<string, any> }) {
   const [, setForm] = useAtom(formsAtom(windowId))
   const [val, setVal] = useState("")
-  const setPub = useAction('@set_pubkey')
+  const setPub = useAction('@set_pubkey', windowId)
   const ph = interpolateText(text || "", globals, queries);
   const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = e.target.value;
@@ -164,6 +159,67 @@ function InputNode({ text, globals, windowId, name, queries }: { text: string; g
   );
 }
 
+function MarkdownEditorNode({ data, windowId }: { data?: any; windowId: string }) {
+  const [formValues, setFormValues] = useAtom(formsAtom(windowId))
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const editorRef = useRef<any>(null)
+  const rawId = typeof data?.id === 'string' ? data.id : typeof data?.name === 'string' ? data.name : ''
+  const fieldName = useMemo(() => {
+    const trimmed = String(rawId || '').trim()
+    const withoutDollar = trimmed.startsWith('$') ? trimmed.slice(1) : trimmed
+    const normalized = withoutDollar.replace(/[^A-Za-z0-9_-]/g, '_')
+    return normalized || 'editor'
+  }, [rawId])
+  const placeholder = typeof data?.placeholder === 'string' ? data.placeholder : ''
+  const value = typeof formValues?.[fieldName] === 'string' ? formValues[fieldName] : ''
+
+  const handleChange = useCallback((val: string) => {
+    setFormValues(prev => ({ ...(prev || {}), [fieldName]: val }))
+  }, [fieldName, setFormValues])
+
+  useEffect(() => {
+    if (!containerRef.current) return
+    const [instance] = OverType.init(containerRef.current, {
+      value,
+      toolbar: false,
+      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+      fontSize: '14px',
+      lineHeight: 1.5,
+      onChange: handleChange,
+    } as any)
+    editorRef.current = instance
+    return () => {
+      try { editorRef.current?.destroy?.() } catch {}
+      editorRef.current = null
+    }
+  }, [handleChange])
+
+  useEffect(() => {
+    if (editorRef.current && typeof editorRef.current.getValue === 'function') {
+      const current = editorRef.current.getValue()
+      if (current !== value) {
+        editorRef.current.setValue(value)
+      }
+    }
+  }, [value])
+
+  const showPlaceholder = placeholder && !value
+
+  return (
+    <div className="relative border border-gray-400 rounded bg-white">
+      {showPlaceholder && (
+        <div className="pointer-events-none absolute inset-3 text-gray-500 text-sm select-none">
+          {placeholder}
+        </div>
+      )}
+      <div
+        ref={containerRef}
+        className="min-h-[140px] max-h-[360px] overflow-y-auto px-3 py-2 text-sm text-gray-900"
+      />
+    </div>
+  )
+}
+
 type RenderNodesProps = {
   nodes: Node[];
   globals: any;
@@ -181,7 +237,7 @@ function RenderNodes({ nodes, globals, windowId, queries, inline = false, debug 
     if (n.type === "button") {
       return (
         <ButtonNode
-          key={key}
+          key={n.id || key}
           text={n.data?.text || ""}
           action={n.data?.action}
           globals={globals}
@@ -191,10 +247,19 @@ function RenderNodes({ nodes, globals, windowId, queries, inline = false, debug 
         />
       );
     }
+    if (n.type === "markdown_editor") {
+      return (
+        <MarkdownEditorNode
+          key={n.id || key}
+          data={n.data}
+          windowId={windowId}
+        />
+      )
+    }
     if (n.type === "input") {
       return (
         <InputNode
-          key={key}
+          key={n.id || key}
           text={n.data?.text || ""}
           name={n.data?.name}
           globals={globals}
@@ -261,7 +326,14 @@ function EachNode({ node, globals, windowId, queries, debug = false }: EachNodeP
   return (
     <div className="flex flex-col gap-3">
       {list.map((item, index) => {
-        const loopGlobals = { ...globals, [asName]: item, [`${asName}Index`]: index };
+        const dollarAlias = asName.startsWith('$') ? asName : `$${asName}`;
+        const loopGlobals = {
+          ...globals,
+          [asName]: item,
+          [dollarAlias]: item,
+          [`${asName}Index`]: index,
+          [`${dollarAlias}Index`]: index,
+        };
         return (
           <Fragment key={`${node.id || 'each'}-${index}`}>
             <RenderNodes
@@ -292,6 +364,8 @@ function buildPayload(spec: any, globals: any, queries: Record<string, any>) {
 export function AppView({ id }: { id: string }) {
   // Select only the doc text for this window to avoid global re-renders
   const doc = useAtomValue(docAtom(id)) || "";
+  const docActionsAtomRef = useMemo(() => docActionsAtom(id), [id])
+  const setDocActions = useSetAtom(docActionsAtomRef)
   const { compiled, error: compileError } = useMemo(() => {
     try {
       return { compiled: compileMarkdownDoc(doc), error: null as Error | null };
@@ -302,22 +376,38 @@ export function AppView({ id }: { id: string }) {
   }, [doc]);
   const nodes = useMemo(() => (compiled?.ast as Node[]) || [], [compiled]);
 
-  // Detect if this document references time.now; if not, don't subscribe to time updates
-  const usesTime = useMemo(() => /{{\s*time\.now\s*}}/.test(doc), [doc]);
+  useEffect(() => {
+    if (!compiled || compileError) {
+      setDocActions({})
+      return
+    }
+    const actions = buildDocActionMap(compiled.meta?.actions)
+    setDocActions(actions)
+    return () => {
+      setDocActions({})
+    }
+  }, [compiled, compileError, setDocActions])
+
+  // Detect if this document references $time.now; if not, don't subscribe to time updates
+  const usesTime = useMemo(() => /{{\s*\$time\.now\s*}}/.test(doc), [doc]);
 
   // Select only the slices we need for this window
   const globalsUser = useAtomValue(userAtom);
   const timeNow = useAtomValue(windowTimeAtom(id));
   const rawScalars = useAtomValue(windowScalarsAtom(id));
   const forms = useAtomValue(formsAtom(id))
-  const globals = useMemo(() => ({ user: globalsUser, time: { now: timeNow }, form: forms }), [globalsUser, timeNow, forms]);
+  const globals = useMemo(() => {
+    const timeObj = { now: timeNow };
+    return {
+      user: globalsUser,
+      $user: globalsUser,
+      time: timeObj,
+      $time: timeObj,
+      form: forms,
+      $form: forms,
+    };
+  }, [globalsUser, timeNow, forms]);
   // Fallback: if Hypersauce queries are unavailable, derive $profile from user.profile
-  const mergedScalars = useMemo(() => {
-    const fb: Record<string, any> = {}
-    if (globals.user?.profile) fb['$profile'] = globals.user.profile
-    return { ...fb, ...(rawScalars || {}) }
-  }, [globals.user?.profile, rawScalars])
-
   // Per-render logging to trace causes
   const renderCount = useRef(0);
   const debug = useAtomValue(debugAtom)
@@ -335,7 +425,7 @@ export function AppView({ id }: { id: string }) {
     console.log(`[Cause] ${id}: doc changed`, { len: doc.length });
   }, [doc]);
   useEffect(() => {
-      if (usesTime && debug) console.log(`[Cause] ${id}: time.now`, timeNow);
+      if (usesTime && debug) console.log(`[Cause] ${id}: $time.now`, timeNow);
   }, [timeNow, usesTime, debug]);
   useEffect(() => {
     if (debug) console.log(`[Cause] ${id}: user.pubkey`, globalsUser?.pubkey);
@@ -344,24 +434,30 @@ export function AppView({ id }: { id: string }) {
     if (debug) console.log(`[Cause] ${id}: queries`, Object.keys(rawScalars || {}));
   }, [rawScalars, debug]);
 
-  // No artificial tick; re-render comes from globals/time.now store updates
+  // No artificial tick; re-render comes from globals/$time.now store updates
 
   // Start/stop queries for this app when meta or pubkey changes
   const relays = useAtomValue(relaysAtom)
   useEffect(() => {
     if (!compiled || compileError) return;
+    const userContext = globals.user?.pubkey ? { pubkey: globals.user.pubkey } : undefined
+    const ctx: Record<string, any> = {}
+    if (userContext) {
+      ctx.user = userContext
+      ctx.$user = userContext
+    }
     queryRuntime.start({
       windowId: id,
       meta: compiled.meta,
       relays,
-      context: { user: { pubkey: globals.user.pubkey } },
+      context: ctx,
       onScalars: () => {},
     }).catch(e => console.warn('[Hypersauce] start failed', e))
     return () => queryRuntime.stop(id)
   }, [id, compiled, compileError, globals.user.pubkey, relays])
 
   const EMPTY: Record<string, any> = useMemo(() => ({}), []);
-  const queriesForWindow = mergedScalars ?? EMPTY;
+  const queriesForWindow = rawScalars ?? EMPTY;
 
   if (compileError) {
     return (
@@ -377,7 +473,11 @@ export function AppView({ id }: { id: string }) {
     return <div className="p-4 text-sm text-red-800 bg-red-50 border border-red-200 rounded">Document unavailable.</div>;
   }
 
-  return <RenderNodes nodes={nodes} globals={globals} windowId={id} queries={queriesForWindow} debug={debug} />;
+  return (
+    <div className="max-h-[100vh] overflow-y-auto">
+      <RenderNodes nodes={nodes} globals={globals} windowId={id} queries={queriesForWindow} debug={debug} />
+    </div>
+  );
 }
 
 export function parseFrontmatterName(doc: string): string | undefined {

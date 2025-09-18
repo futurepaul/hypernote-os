@@ -4,12 +4,12 @@ import { toText as markdownToText } from "very-small-parser/lib/markdown/block/t
 
 export type UiNode = {
   id: string;
-  type: "markdown" | "button" | "input" | "hstack" | "vstack" | "each";
+  type: "markdown" | "button" | "input" | "hstack" | "vstack" | "each" | "markdown_editor";
   children?: UiNode[];
   markdown?: any;
   text?: string;
   data?: any;
-  refs?: string[]; // variable references (e.g., $profile.name, user.pubkey, time.now)
+  refs?: string[]; // variable references (e.g., $profile.name, $user.pubkey, $time.now)
 };
 
 export type CompiledDoc = {
@@ -79,9 +79,10 @@ const flush = () => {
   if (!frame.group.length) return;
     assertNoHtml(frame.group);
     const cloned = cloneMarkdownNodes(frame.group);
-    const text = markdownToText(cloned);
+    const normalized = normalizeMarkdownAst(cloned);
+    const text = markdownToText(normalized);
     const refs = extractRefs(text);
-    (frame.node.children as UiNode[]).push({ id: genId(), type: "markdown", markdown: cloned, text, refs });
+    (frame.node.children as UiNode[]).push({ id: genId(), type: "markdown", markdown: normalized, text, refs });
     frame.group = [];
   };
 
@@ -105,6 +106,12 @@ const flush = () => {
         flush();
         const data = safeParseYamlBlock((t.value || "").trim());
         pushNode({ id: genId(), type: "input", data });
+        continue;
+      }
+      if (info === "markdown-editor" || info === "markdown_editor") {
+        flush();
+        const data = safeParseYamlBlock((t.value || "").trim());
+        pushNode({ id: genId(), type: "markdown_editor", data });
         continue;
       }
       if (info === "hstack start" || info === "hstack.start") {
@@ -159,9 +166,10 @@ const flush = () => {
     if (frame.group.length) {
       assertNoHtml(frame.group);
       const cloned = cloneMarkdownNodes(frame.group);
-      const text = markdownToText(cloned);
+      const normalized = normalizeMarkdownAst(cloned);
+      const text = markdownToText(normalized);
       const refs = extractRefs(text);
-      (frame.node.children as UiNode[]).push({ id: genId(), type: "markdown", markdown: cloned, text, refs });
+      (frame.node.children as UiNode[]).push({ id: genId(), type: "markdown", markdown: normalized, text, refs });
       frame.group = [];
     }
   }
@@ -174,16 +182,68 @@ export default compileMarkdownDoc;
 // Extract variable references from a rendered HTML chunk
 function extractRefs(text: string): string[] {
   const refs = new Set<string>();
-  const re = /{{\s*([$]?[a-zA-Z0-9_.-]+)\s*}}/g;
+  const moustache = /{{\s*([^}]+)\s*}}/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) if (m[1]) refs.add(String(m[1]));
-  const reDollar = /(\$[a-zA-Z0-9_.-]+)/g;
-  while ((m = reDollar.exec(text)) !== null) if (m[1]) refs.add(String(m[1]));
+  while ((m = moustache.exec(text)) !== null) {
+    const expr = String(m[1] ?? '').trim();
+    if (!expr) continue;
+    const parts = expr.split('||').map(part => part.trim()).filter(Boolean);
+    for (const part of parts.length ? parts : ['']) {
+      const tokenMatch = part.match(/^[$]?[a-zA-Z0-9_.-]+/);
+      if (tokenMatch) {
+        const token = tokenMatch[0];
+        if (!token.startsWith('$')) {
+          throw new Error(`Variables in templates must start with '$'. Found "${token}" in "{{ ${expr} }}".`);
+        }
+        refs.add(token);
+      }
+    }
+  }
+  const dollar = /(\$[a-zA-Z0-9_.-]+)/g;
+  while ((m = dollar.exec(text)) !== null) if (m[1]) refs.add(String(m[1]));
   return Array.from(refs);
 }
 
 function cloneMarkdownNodes(nodes: any[]): any {
   return JSON.parse(JSON.stringify(nodes));
+}
+
+function normalizeMarkdownAst(nodes: any[]): any[] {
+  return nodes.map(node => {
+    if (!node || typeof node !== 'object') return node;
+    const clone: any = { ...node };
+    if (Array.isArray(node.children)) clone.children = normalizeMarkdownAst(node.children);
+    if (clone.type === 'paragraph' && Array.isArray(clone.children)) {
+      clone.children = mergeImageReferences(clone.children);
+    }
+    return clone;
+  });
+}
+
+function mergeImageReferences(children: any[]): any[] {
+  const out: any[] = [];
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i];
+    if (child && child.type === 'imageReference') {
+      const next = children[i + 1];
+      const url = extractInlineReferenceUrl(next);
+      if (url) {
+        out.push({ type: 'image', url, alt: child.alt || child.identifier || '' });
+        i += 1;
+        continue;
+      }
+    }
+    out.push(child);
+  }
+  return out;
+}
+
+function extractInlineReferenceUrl(node: any): string | null {
+  if (!node || node.type !== 'text') return null;
+  const raw = typeof node.value === 'string' ? node.value : '';
+  const match = raw.match(/^\s*\((.*)\)\s*$/);
+  if (!match) return null;
+  return (match[1] || '').trim();
 }
 
 function assertNoHtml(nodes: any[]) {

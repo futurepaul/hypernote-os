@@ -3,7 +3,7 @@ export const defaultApps: Record<string, string> = {
 name: Profile
 "$profile":
   kinds: [0]
-  authors: [user.pubkey]
+  authors: [$user.pubkey]
   limit: 1
   pipe:
     - first
@@ -15,7 +15,7 @@ Paste an npub to view a profile.
 
 # Name: {{ $profile.name }}
 
-![avatar]($profile.picture)
+![avatar]({{ $profile.picture }})
 
 \`\`\`input
 name: pubkey
@@ -53,7 +53,33 @@ action: @receive
 name: Clock
 icon: clock.png
 ---
-The time is {{time.now}}.
+The time is {{ $time.now }}.
+`,
+  poast: `---
+name: Poast
+icon: mail.png
+actions:
+  "@post_note":
+    kind: 1
+    content: "{{ $form.editor }}"
+    tags:
+      - ["client", "hypernote-client"]
+    after:
+      clear: ["editor"]
+---
+Compose a note and share it on Nostr.
+
+> TODO: Publish Poast to Nostr and remove from defaults once it's widely installed.
+
+\`\`\`markdown-editor
+id: $editor
+placeholder: What's on your mind?
+\`\`\`
+
+\`\`\`button
+text: Poast
+action: "@post_note"
+\`\`\`
 `,
   apps: `---
 name: Apps
@@ -98,19 +124,19 @@ icon: folder.png
 from: $apps_enriched
 as: app
 \`\`\`
-![avatar]({{ app.1.picture }})
+![avatar]({{ $app.1.picture || $app.profile.picture }}?w=48)
 
-### {{ app.0.parsed.meta.name }}
+### {{ $app.0.parsed.meta.name }}
 
-Version {{ app.0.parsed.version }} • {{ app.1.display_name }} {{ app.1.name }}
+Version {{ $app.0.parsed.version }} • {{ $app.1.display_name }}
 
-{{ app.0.parsed.meta.description }}
+{{ $app.0.parsed.meta.description }}
 
 \`\`\`button
 text: Install
 action: "@install_app"
 payload:
-  naddr: "{{ app.0.naddr }}"
+  naddr: "{{ $app.0.naddr }}"
 \`\`\`
 
 ---
