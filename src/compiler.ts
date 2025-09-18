@@ -38,27 +38,12 @@ function safeParseYamlBlock(raw: string): any {
     data = YAML.parse(raw);
   } catch {}
   if (!data || typeof data !== "object") {
-    const root: any = {};
-    const stack: Array<{ indent: number; target: any }> = [{ indent: -1, target: root }];
-    const lines = raw.split(/\r?\n/);
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      const match = line.match(/^(\s*)([A-Za-z0-9_.-]+)\s*:\s*(.*)$/);
-      if (!match) continue;
-      const indent = match[1]?.length ?? 0;
-      const key = String(match[2] ?? '');
-      const value = match[3] ?? '';
-      while (stack.length && indent <= stack[stack.length - 1]!.indent) stack.pop();
-      const parent = stack[stack.length - 1]?.target ?? root;
-      if (value === '') {
-        parent[key] = {};
-        stack.push({ indent, target: parent[key] });
-      } else {
-        parent[key] = value;
-      }
+    data = {} as any;
+    for (const line of raw.split(/\r?\n/)) {
+      const m = line.match(/^\s*([A-Za-z0-9_.-]+)\s*:\s*(.*)$/);
+      if (m) data[String(m[1] ?? '')] = m[2];
     }
-    data = root;
-    if (!Object.keys(data).length) data.text = raw;
+    if (!data.text) data.text = raw;
   }
   return data;
 }
