@@ -8,7 +8,7 @@ function stripIds(ast: any): any {
   if (ast && typeof ast === 'object') {
     const out: any = {}
     for (const k of Object.keys(ast)) {
-      if (k === 'id') continue
+      if (k === 'id' || k === 'len') continue
       out[k] = stripIds((ast as any)[k])
     }
     return out
@@ -36,4 +36,3 @@ describe("round-trip compile/decompile", () => {
     })
   }
 })
-

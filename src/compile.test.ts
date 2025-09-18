@@ -1,6 +1,7 @@
 import { expect, test, describe } from "bun:test";
 import { compileMarkdownDoc } from "./compiler";
 import { defaultApps } from "./apps/app";
+import { decompile } from "./decompiler";
 
 describe("compiler", () => {
   test("wallet compiles to AST with hstack and buttons", async () => {
@@ -9,10 +10,10 @@ describe("compiler", () => {
     expect(meta.name).toBe("Wallet");
     expect(Array.isArray(ast)).toBe(true);
 
-    // Expect first node to be HTML containing the H1 "$60"
-    const htmlNode = ast.find(n => n.type === "html");
-    expect(htmlNode).toBeTruthy();
-    expect(htmlNode!.html || "").toContain("$60");
+    // Expect first markdown node to include the price text
+    const markdownNode = ast.find(n => n.type === "markdown");
+    expect(markdownNode).toBeTruthy();
+    expect(markdownNode!.text || "").toContain("$60");
 
     // Expect an hstack with two button children
     const row = ast.find(n => n.type === "hstack");
@@ -32,5 +33,17 @@ describe("compiler", () => {
     expect(input?.data?.text).toContain("nsec or npub");
     expect(button?.data?.text).toBe("Load Profile");
     expect(button?.data?.action).toBe("@load_profile");
+  });
+  test("rejects raw html", () => {
+    const bad = `---\nname: Bad\n---\n<div>html</div>`;
+    expect(() => compileMarkdownDoc(bad)).toThrow(/HTML is not supported/);
+  });
+
+  test("preserves yaml arrays in frontmatter", () => {
+    const md = `---\nname: Test\n"$items":\n  authors: [user.pubkey]\n---\nhi\n`;
+    const compiled = compileMarkdownDoc(md);
+    expect(Array.isArray(compiled.meta["$items"]?.authors)).toBe(true);
+    const roundtrip = compileMarkdownDoc(decompile(compiled));
+    expect(roundtrip.meta["$items"].authors).toEqual(['user.pubkey']);
   });
 });

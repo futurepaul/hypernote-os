@@ -1,4 +1,5 @@
 import YAML from 'yaml'
+import { toText as markdownToText } from 'very-small-parser/lib/markdown/block/toText'
 import type { CompiledDoc, UiNode } from './compiler'
 
 function sortObject<T extends Record<string, any>>(obj: T): T {
@@ -20,9 +21,10 @@ function encodeFrontmatter(meta: Record<string, any>): string {
 }
 
 function encodeNode(n: UiNode): string {
-  if (n.type === 'html') {
-    // Raw HTML is valid Markdown; emit as-is
-    return (n.html || '').trim()
+  if (n.type === 'markdown') {
+    const nodes = n.markdown as any
+    const text = markdownToText(nodes || [])
+    return text.trim()
   }
   if (n.type === 'button' || n.type === 'input') {
     const y = YAML.stringify(n.data || {}).trimEnd()

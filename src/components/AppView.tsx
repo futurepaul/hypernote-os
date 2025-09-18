@@ -8,6 +8,8 @@ import { formsAtom } from '../state/formsAtoms'
 import { queryRuntime } from '../queries/runtime'
 import { interpolate as interp, resolveImgDollarSrc } from '../interp/interpolate'
 import { useAction, normalizeActionName } from '../state/actions'
+import { toHast } from 'very-small-parser/lib/markdown/block/toHast'
+import { toText as htmlToText } from 'very-small-parser/lib/html/toText'
 import { slugify } from '../services/apps'
 
 type Node = UiNode;
@@ -19,7 +21,7 @@ function interpolateText(text: string, globals: any, queries: Record<string, any
 
 // parsing/compilation is handled by compiler.ts
 
-function HtmlNode({ n, globals, queries }: { n: Node; globals: any; queries: Record<string, any> }) {
+function MarkdownNode({ n, globals, queries }: { n: Node; globals: any; queries: Record<string, any> }) {
   const deps = useMemo(() => {
     const refs = n.refs || []
     const q: Record<string, any> = (queries && typeof queries === 'object') ? queries : {}
@@ -38,8 +40,12 @@ function HtmlNode({ n, globals, queries }: { n: Node; globals: any; queries: Rec
   }, [n.refs, queries, globals])
 
   const html = useMemo(() => {
-    const raw = interpolateText(n.html || '', globals, queries)
-    return resolveImgDollarSrc(raw, queries || {})
+    const tokens = (n.markdown as any) ?? []
+    const cloned = JSON.parse(JSON.stringify(tokens))
+    const hast = toHast(cloned)
+    const raw = htmlToText(hast) as string
+    const interpolated = interpolateText(raw, globals, queries)
+    return resolveImgDollarSrc(interpolated, queries || {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [n.id, ...deps])
 
@@ -171,8 +177,8 @@ type RenderNodesProps = {
 
 function RenderNodes({ nodes, globals, windowId, queries, inline = false, debug = false }: RenderNodesProps) {
   const renderNode = (n: Node, key: number): ReactNode => {
-    if (n.type === "html") {
-      return <HtmlNode key={n.id || key} n={n} globals={globals} queries={queries} />;
+    if (n.type === "markdown") {
+      return <MarkdownNode key={n.id || key} n={n} globals={globals} queries={queries} />;
     }
     if (n.type === "button") {
       return (

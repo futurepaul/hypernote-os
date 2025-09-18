@@ -1,13 +1,13 @@
 import YAML from "yaml";
 import { markdown } from "very-small-parser";
-import { toHast } from "very-small-parser/lib/markdown/block/toHast";
-import { toText as htmlToText } from "very-small-parser/lib/html/toText";
+import { toText as markdownToText } from "very-small-parser/lib/markdown/block/toText";
 
 export type UiNode = {
   id: string;
-  type: "html" | "button" | "input" | "hstack" | "vstack" | "each";
+  type: "markdown" | "button" | "input" | "hstack" | "vstack" | "each";
   children?: UiNode[];
-  html?: string;
+  markdown?: any;
+  text?: string;
   data?: any;
   refs?: string[]; // variable references (e.g., $profile.name, user.pubkey, time.now)
 };
@@ -74,13 +74,14 @@ export function compileMarkdownDoc(md: string): CompiledDoc {
   const root: UiNode = { id: genId(), type: "vstack", children: [] };
   const stack: Frame[] = [{ node: root, group: [] }];
 
-  const flush = () => {
-    const frame = stack[stack.length - 1]!;
-    if (!frame.group.length) return;
-    const hast = toHast(frame.group);
-    const html = htmlToText(hast) as string;
-    const refs = extractRefs(html);
-    (frame.node.children as UiNode[]).push({ id: genId(), type: "html", html, refs });
+const flush = () => {
+  const frame = stack[stack.length - 1]!;
+  if (!frame.group.length) return;
+    assertNoHtml(frame.group);
+    const cloned = cloneMarkdownNodes(frame.group);
+    const text = markdownToText(cloned);
+    const refs = extractRefs(text);
+    (frame.node.children as UiNode[]).push({ id: genId(), type: "markdown", markdown: cloned, text, refs });
     frame.group = [];
   };
 
@@ -156,10 +157,11 @@ export function compileMarkdownDoc(md: string): CompiledDoc {
   for (let i = stack.length - 1; i >= 0; i--) {
     const frame = stack[i]!;
     if (frame.group.length) {
-      const hast = toHast(frame.group);
-      const html = htmlToText(hast) as string;
-      const refs = extractRefs(html);
-      (frame.node.children as UiNode[]).push({ id: genId(), type: "html", html, refs });
+      assertNoHtml(frame.group);
+      const cloned = cloneMarkdownNodes(frame.group);
+      const text = markdownToText(cloned);
+      const refs = extractRefs(text);
+      (frame.node.children as UiNode[]).push({ id: genId(), type: "markdown", markdown: cloned, text, refs });
       frame.group = [];
     }
   }
@@ -170,14 +172,27 @@ export function compileMarkdownDoc(md: string): CompiledDoc {
 export default compileMarkdownDoc;
 
 // Extract variable references from a rendered HTML chunk
-function extractRefs(html: string): string[] {
+function extractRefs(text: string): string[] {
   const refs = new Set<string>();
-  // Mustache-like tokens already interpolated later
   const re = /{{\s*([$]?[a-zA-Z0-9_.-]+)\s*}}/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(html)) !== null) if (m[1]) refs.add(String(m[1]));
-  // $query.path inside img src or elsewhere
+  while ((m = re.exec(text)) !== null) if (m[1]) refs.add(String(m[1]));
   const reDollar = /(\$[a-zA-Z0-9_.-]+)/g;
-  while ((m = reDollar.exec(html)) !== null) if (m[1]) refs.add(String(m[1]));
+  while ((m = reDollar.exec(text)) !== null) if (m[1]) refs.add(String(m[1]));
   return Array.from(refs);
+}
+
+function cloneMarkdownNodes(nodes: any[]): any {
+  return JSON.parse(JSON.stringify(nodes));
+}
+
+function assertNoHtml(nodes: any[]) {
+  for (const node of nodes) {
+    if (!node || typeof node !== 'object') continue;
+    const type = String((node as any).type || '').toLowerCase();
+    if (type.includes('html') || type === 'element') {
+      throw new Error('Raw HTML is not supported in markdown blocks.');
+    }
+    if (Array.isArray((node as any).children)) assertNoHtml((node as any).children);
+  }
 }
