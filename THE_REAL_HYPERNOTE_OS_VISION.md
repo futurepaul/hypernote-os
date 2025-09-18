@@ -98,7 +98,7 @@ Goal: Let apps define write actions using a minimal, explicit schema.
   - `runAction(name, scope)` performs interpolation and asks Hypersauce to publish.
 - Acceptance: Profile or Wallet demo includes a working `@post_note` using form data.
 
-Status: DONE. Frontmatter-defined actions now interpolate against `{ globals, $form, queries }`, publish through Hypersauce, and clear referenced form fields. The Poast default app demonstrates a `markdown-editor` control feeding `@post_note` kind 1 events. Follow-up: surface publish result metadata (event ids) back to apps when needed.
+Status: DONE. Frontmatter-defined actions now interpolate against `{ globals, $form, queries }`, publish through Hypersauce, and clear referenced form fields. The Poast default app demonstrates a `markdown-editor` control feeding `@post_note` kind 1 events. TODO: surface publish result metadata (event ids) back to apps for follow-up queries.
 
 ### Phase 4 — Elements & Composition
 Goal: Support nested Hypernotes (elements) and param passing.
