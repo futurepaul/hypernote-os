@@ -32,6 +32,8 @@ Goal: Establish the canonical JSON AST and deterministic round‑trip with Markd
   - `if expr`: truthy‑existence only (no operators); evaluates whether a value exists/loaded.
   - `each $items as item`: iterate only arrays from queries; no arbitrary ranges.
 
+Status: DONE (compiler hardening, decompiler, round‑trip tests). TODO: add `if`/`each` parser + decompiler.
+
 ### Phase 1 — App Registry (naddr‑first) + System Menu
 Goal: Make installed apps be a list of `naddr` pointers, not local copies.
 
@@ -40,6 +42,8 @@ Goal: Make installed apps be a list of `naddr` pointers, not local copies.
 - Editor opens one app at a time (single‑file editing). “Edit” button on each app opens an editor window for that app’s content (fetched via naddr). Multiple editor windows allowed.
 - System‑wide menu (NextOS‑style): compact bar/context menu with global actions: Login (NIP‑07), Add App (naddr), New Local Draft, Open Editor, Toggle Debug. Keyboard shortcuts where obvious.
 - Acceptance: user can add by naddr, app appears and runs; editor opens that app for editing.
+
+Status: PARTIAL. System menu window with Login (NIP‑07), Add App (naddr), New Draft, Open Editor, Toggle Debug — DONE. Single‑file “Edit App” windows and naddr list persistence — TODO.
 
 ### Phase 2 — Publish to Nostr (kind 32616)
 Goal: Publish current app to Nostr using Hypersauce API.
@@ -52,6 +56,8 @@ Goal: Publish current app to Nostr using Hypersauce API.
   - Editor “Publish” in File menu and app context menu.
   - Local drafts: on publish success, install by returned `naddr` and replace draft with pointer.
 - Acceptance: editor can publish; app can be re‑installed anywhere by naddr and renders identically.
+
+Status: PARTIAL. Generic `login()` + `publishEvent()` added to Hypersauce; `publishApp()` wrapper drafted. Editor “Publish” button and swap draft→naddr install — TODO.
 
 ### Phase 3 — Actions (write to Nostr)
 Goal: Let apps define write actions using a minimal, explicit schema.
@@ -69,6 +75,8 @@ Goal: Let apps define write actions using a minimal, explicit schema.
   - `runAction(name, scope)` performs interpolation and asks Hypersauce to publish.
 - Acceptance: Profile or Wallet demo includes a working `@post_note` using form data.
 
+Status: PARTIAL. Action registry exists and works for `@load_profile`/`@set_pubkey`. Frontmatter‑defined publish actions via `publishEvent` — TODO.
+
 ### Phase 4 — Elements & Composition
 Goal: Support nested Hypernotes (elements) and param passing.
 
@@ -79,12 +87,16 @@ Goal: Support nested Hypernotes (elements) and param passing.
 - Param passing: by expected kind (e.g., kind 0 expects a pubkey) and whole events where appropriate; no arbitrary JSON blobs for now.
 - Acceptance: Chess board element and Profile badge element render inside other apps.
 
+Status: TODO (embed by naddr + props; caching minimal; facade stable).
+
 ### Phase 5 — App List on Nostr
 Goal: Sync installed apps across devices via Nostr.
 
 - Store `installedApps` in a replaceable 30078 event with `['d','hypernote.installed-apps']` and JSON content `{ apps: [{ id, naddr }], pinned?: [...], order?: [...] }`.
 - On startup: fetch user’s list; fallback to localStorage if unavailable; merge sensibly.
 - Acceptance: sign into another machine; your dock populates from Nostr.
+
+Status: TODO (kind 30078 replaceable list with d=hypernote.installed-apps; merge with local on boot).
 
 ### Phase 6 — Blossom Uploads (assets)
 Goal: Allow uploading images/icons, return URLs used in apps.
@@ -93,12 +105,101 @@ Goal: Allow uploading images/icons, return URLs used in apps.
 - Editor: “Upload Image” returns URL; user pastes into frontmatter `icon:` or content.
 - Acceptance: user updates an icon by uploading and sees it in dock.
 
+Status: TODO (await instance).
+
 ### Phase 7 — Polish & Hardening
 Goal: Keep it simple, stable, and testable.
 
 - Tests: round‑trip compiler, interpolation, image `$` substitution, action publishing dry‑run.
 - Performance: memoization on node refs already; keep it.
 - Logging: debug toggle; quiet by default.
+
+Status: PARTIAL. Debug toggle DONE; add tests for interpolate and image `$` substitution — TODO.
+
+---
+
+## Architecture Decisions & Boot Lifecycle (CURRENT)
+
+Decision: Boot Singleton + Atom (Option A), with a future seam for a tiny runtime façade (Option C) if/when desired.
+
+- Hypersauce Client
+  - Exactly one instance is created during boot and stored in `hypersauceClientAtom`.
+  - Central relay setting via `client.setRelays(relays)`; TODO: after login fetch user’s preferred relays and update.
+  - Hypersauce is generic: `login()`, `publishEvent()`, `runQueryDocumentLive()`.
+
+- Boot Lifecycle
+  - `boot:init` → construct Hypersauce client → set `bootStage=login` if `user.pubkey` empty, else `ready`.
+  - `boot:login` → LoginWindow supports npub paste or NIP‑07; on success set `user.pubkey` and `bootStage=ready`.
+  - `boot:ready` → OS windows render; runtime starts live queries (gated on context e.g. pubkey).
+
+- Runtime Layer
+  - Only the runtime reads `hypersauceClientAtom`; if null, it quietly no‑ops. Apps never branch on readiness.
+  - Future: introduce a tiny façade (Option C) exposing `runtime.query.start/stop`, `runtime.login`, `runtime.publishEvent` for clearer boundaries; not required now.
+
+- Packaging (DEV)
+  - During development, the app may import Hypersauce from the sibling repo to avoid package export ambiguity.
+  - TODO: stabilize `hypersauce` package export shape (named `HypersauceClient` via `index.ts`, package.json `exports`), then switch to static package import in app boot.
+
+---
+
+## Execution Status Snapshot
+
+Done
+- Markdown removed; defaults as in‑repo strings.
+- Editor/AppSwitcher → panels; no nested windows.
+- Window layout persistence (pos/z) to localStorage.
+- HtmlNode memoization + per‑window `time.now` gating; clock no longer re‑renders other windows.
+- Profile query fallback: `$profile` sourced from `user.profile` when Hypersauce absent.
+- Action name normalization.
+- Dock UI with icons, beveled windows, close button; retro palette.
+- System Menu window (Login, Add App by naddr, New Draft, Open Editor, Toggle Debug).
+- Hypersauce generic `login()` + `publishEvent()`; publish via applesauce RelayPool with optimistic EventStore add.
+- Decompiler + round‑trip tests (Phase 0 acceptance for existing nodes).
+- LoginWindow gating OS until identity ready (`bootStage`).
+
+In Progress / Next
+- Editor: Add “Publish App” button using `publishApp()`; on success install naddr and replace local draft.
+- Dock: Add “Edit” per app (opens single‑file editor windows for installed apps).
+- Installed apps: pointers list + persist via kind 30078 (replaceable) using `publishEvent()`; hydrate on boot.
+- Relays: After login, fetch user relay prefs and call `client.setRelays()`.
+- Runtime façade (optional): small module wrapping `runQueryDocumentLive`, `publishEvent`, `login` for apps.
+- Compiler: Add `if` and `each` blocks (parse + decompile) per semantics above.
+- Elements: embed hypernotes by naddr with props (by kind), minimal caching.
+- Tests: interpolation + image `$` resolution; action publishing dry‑run.
+- Packaging: finalize hypersauce named export and flip app boot to static package import.
+
+Risks / Unknowns
+- package export resolution differences (Bun/Node) — tracked; fall back to sibling import during dev.
+- Blossom upload API details — blocked until instance provided.
+- ContextVM integration — covered by `publishEvent` (actions) and live query subscriptions to the response pubkey.
+
+---
+
+## Short‑Term Task Board
+
+1) Editor “Publish” flow
+   - Wire button to `publishApp(meta, ast)`.
+   - On success: install by naddr, replace draft with pointer, open/focus app window.
+
+2) Dock “Edit” + Single‑File Editor
+   - Add an Edit button per app tile; opens an editor window for that app only.
+
+3) Installed apps list
+   - `installedAppsAtom` pointers; persist via kind 30078 (d=hypernote.installed-apps) using `publishEvent()`.
+   - Load on boot (live doc); merge with local.
+
+4) Relays post‑login (TODO hook)
+   - After login, fetch preferred relays and call `client.setRelays(newRelays)`.
+
+5) Compiler features
+   - Implement `if` / `each` (existence check and array iteration from queries).
+
+6) Elements
+   - Embed by naddr with simple props (by kind); pass props into interpolation scope; cache minimal.
+
+7) Packaging cleanup
+   - Confirm `hypersauce` named export is stable; switch boot to static import.
+
 
 ---
 
