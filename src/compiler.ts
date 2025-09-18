@@ -49,9 +49,22 @@ function safeParseYamlBlock(raw: string): any {
 }
 
 export function compileMarkdownDoc(md: string): CompiledDoc {
-  const mdast = markdown.block.parse(md || "");
+  // Pre-parse frontmatter to be resilient to generators
+  let meta: Record<string, any> = {}
+  let source = md || ''
+  if (source.startsWith('---\n')) {
+    const idx = source.indexOf('\n---\n', 4)
+    if (idx !== -1) {
+      try { meta = YAML.parse(source.slice(4, idx)) || {} } catch {}
+      source = source.slice(idx + 5)
+    }
+  }
+  const mdast = markdown.block.parse(source);
   const tokens = Array.isArray(mdast) ? mdast : [mdast];
-  const { meta, body } = parseFrontmatter(tokens);
+  const parsed = parseFrontmatter(tokens);
+  // Merge token-derived meta (if any) with pre-parsed
+  meta = { ...(parsed.meta || {}), ...meta }
+  const body = parsed.body
 
   // id generator for nodes
   let nextId = 1;

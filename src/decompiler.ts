@@ -1,0 +1,48 @@
+import YAML from 'yaml'
+import type { CompiledDoc, UiNode } from './compiler'
+
+function sortObject<T extends Record<string, any>>(obj: T): T {
+  const out: any = Array.isArray(obj) ? [] : {}
+  const keys = Object.keys(obj).sort()
+  for (const k of keys) {
+    const v = (obj as any)[k]
+    if (v && typeof v === 'object' && !Array.isArray(v)) out[k] = sortObject(v)
+    else out[k] = v
+  }
+  return out as T
+}
+
+function encodeFrontmatter(meta: Record<string, any>): string {
+  const sorted = sortObject(meta || {})
+  let y = YAML.stringify(sorted)
+  if (!y.endsWith('\n')) y += '\n'
+  return `---\n${y}---\n`
+}
+
+function encodeNode(n: UiNode): string {
+  if (n.type === 'html') {
+    // Raw HTML is valid Markdown; emit as-is
+    return (n.html || '').trim()
+  }
+  if (n.type === 'button' || n.type === 'input') {
+    const y = YAML.stringify(n.data || {}).trimEnd()
+    const lang = n.type
+    return `\n\`\`\`${lang}\n${y}\n\`\`\`\n`
+  }
+  if (n.type === 'hstack' || n.type === 'vstack') {
+    const kind = n.type
+    const start = `\n\`\`\`${kind}.start\n\`\`\`\n`
+    const body = (n.children || []).map(encodeNode).join('\n')
+    const end = `\n\`\`\`${kind}.end\n\`\`\`\n`
+    return `${start}${body}${end}`
+  }
+  return ''
+}
+
+export function decompile(doc: CompiledDoc): string {
+  const front = encodeFrontmatter(doc.meta || {})
+  const body = (doc.ast || []).map(encodeNode).join('\n\n')
+  return `${front}\n${body}\n`
+}
+
+export default decompile
