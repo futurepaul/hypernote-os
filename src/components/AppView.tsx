@@ -10,11 +10,8 @@ import { interpolate as interp, resolveImgDollarSrc } from '../interp/interpolat
 import { useAction, normalizeActionName } from '../state/actions'
 import { toHast } from 'very-small-parser/lib/markdown/block/toHast'
 import { toText as htmlToText } from 'very-small-parser/lib/html/toText'
-import { slugify } from '../services/apps'
 
 type Node = UiNode;
-
-const IMAGE_SIZE = 48;
 
 function interpolateText(text: string, globals: any, queries: Record<string, any>) {
   return interp(text, { globals, queries })
@@ -46,9 +43,8 @@ function MarkdownNode({ n, globals, queries }: { n: Node; globals: any; queries:
     const hast = toHast(cloned)
     const raw = htmlToText(hast) as string
     const interpolated = interpolateText(raw, globals, queries)
-    const resolved = resolveImgDollarSrc(interpolated, queries || {})
-    return normalizeImageTags(resolved, IMAGE_SIZE)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return resolveImgDollarSrc(interpolated, queries || {})
+    // eslint-disable-next-line react-hooks-exhaustive-deps
   }, [n.id, ...deps])
 
   return <div className="app-markdown" dangerouslySetInnerHTML={{ __html: html }} />
@@ -258,15 +254,14 @@ function EachNode({ node, globals, windowId, queries, debug = false }: EachNodeP
   const source = sourceRaw.trim() || '$items';
   const asName = typeof data.as === 'string' && data.as.length > 0 ? data.as : 'item';
   const listRaw = queries ? queries[source] : undefined;
-  const list = normalizeEachList(listRaw);
-  if (debug) console.log(`[Each] source=${source}`, { raw: listRaw, derivedLength: list.length });
+  const list = Array.isArray(listRaw) ? listRaw : [];
+  if (debug) console.log(`[Each] source=${source}`, { length: list.length });
   if (!list.length) return null;
 
   return (
     <div className="flex flex-col gap-3">
       {list.map((item, index) => {
-        const enhanced = enhanceLoopItem(item);
-        const loopGlobals = { ...globals, [asName]: enhanced, [`${asName}Index`]: index };
+        const loopGlobals = { ...globals, [asName]: item, [`${asName}Index`]: index };
         return (
           <Fragment key={`${node.id || 'each'}-${index}`}>
             <RenderNodes
@@ -284,18 +279,6 @@ function EachNode({ node, globals, windowId, queries, debug = false }: EachNodeP
   );
 }
 
-function normalizeEachList(value: any): any[] {
-  if (Array.isArray(value)) return value;
-  if (!value) return [];
-  if (value instanceof Map) return Array.from(value.values());
-  if (typeof value === 'object') {
-    if (Array.isArray((value as any).items)) return (value as any).items;
-    if (Array.isArray((value as any).events)) return (value as any).events;
-    if (Array.isArray((value as any).results)) return (value as any).results;
-  }
-  return [];
-}
-
 function buildPayload(spec: any, globals: any, queries: Record<string, any>) {
   if (!spec || typeof spec !== 'object') return undefined
   const out: Record<string, any> = {}
@@ -304,136 +287,6 @@ function buildPayload(spec: any, globals: any, queries: Record<string, any>) {
     else out[key] = value
   }
   return out
-}
-
-function normalizeImageTags(html: string, width: number): string {
-  return html.replace(/<img\b([^>]*?)src=["']([^"']+)["']([^>]*)>/gi, (match, pre, src, post) => {
-    const newSrc = ensureImageWidthParam(src, width)
-    let tag = `<img${pre}src="${newSrc}"${post}>`
-    const attrs = `${pre}${post}`
-    if (!/\bwidth\s*=/.test(attrs)) tag = tag.replace('<img', `<img width="${width}"`)
-    if (!/\bheight\s*=/.test(attrs)) tag = tag.replace('<img', `<img height="${width}"`)
-    return tag
-  })
-}
-
-function ensureImageWidthParam(src: string, width: number): string {
-  try {
-    if (/^data:/i.test(src)) return src
-    if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(src)) return src
-    const url = new URL(src)
-    url.searchParams.set('w', String(width))
-    url.searchParams.set('width', String(width))
-    return url.toString()
-  } catch {
-    return src
-  }
-}
-
-function enhanceLoopItem(raw: any): any {
-  if (raw == null) return raw;
-  if (Array.isArray(raw)) {
-    const [event, ...rest] = raw;
-    const base = enhanceLoopItem(event) || {};
-    base.__tuple = raw;
-    if (rest.length > 0) base._enrich = rest;
-    if (rest[0] && typeof rest[0] === 'object') {
-      base.profileEvent = rest[0];
-      const profile = parseEventContent(rest[0]);
-      if (profile) {
-        base.publisherProfile = profile;
-        const name = profile.display_name || profile.name;
-        if (name) base.publisherName = name;
-        const pic = profile.picture || profile.image;
-        if (pic) base.publisherImage = pic;
-      }
-    }
-    base.publisherShort = abbreviate(base.npub || base.pubkey);
-    if (!base.publisherName) base.publisherName = base.publisherShort;
-    base.publisherImageMarkdown = buildImageMarkdown(base.publisherImage, IMAGE_SIZE);
-    return base;
-  }
-  if (typeof raw !== 'object') return raw;
-  const out: any = { ...raw };
-  out.event = raw;
-
-  if (typeof raw.content === 'string') {
-    const parsed = parseEventContent(raw);
-    if (parsed) {
-      out.content_json = parsed;
-      if (parsed.meta && typeof parsed.meta === 'object') {
-        out.meta = parsed.meta;
-        if (parsed.meta.name && !out.name) out.name = parsed.meta.name;
-        if (parsed.meta.description && !out.description) out.description = parsed.meta.description;
-      }
-      if (parsed.version && !out.version) out.version = parsed.version;
-      if (parsed.ast && !out.ast) out.ast = parsed.ast;
-    }
-  }
-
-  const tagsArray: any[] = Array.isArray(raw.tags) ? raw.tags : [];
-  if (tagsArray.length) {
-    const tagMap: Record<string, string[]> = {};
-    for (const tag of tagsArray) {
-      if (Array.isArray(tag) && tag.length >= 2) {
-        const [name, value] = tag;
-        if (!tagMap[name]) tagMap[name] = [];
-        if (value != null) tagMap[name].push(String(value));
-      }
-    }
-    if (Object.keys(tagMap).length) out.tagMap = tagMap;
-    const dTag = tagMap['d']?.[0];
-    if (dTag && !out.identifier) out.identifier = dTag;
-    if (!out.version && tagMap['hypernote']?.[0]) out.version = tagMap['hypernote'][0];
-    if (!out.kindLabel && tagMap['hypernote-type']?.[0]) out.kindLabel = tagMap['hypernote-type'][0];
-  }
-
-  const metaName = out.meta && typeof out.meta === 'object' ? out.meta.name : undefined;
-  if (!out.name && typeof metaName === 'string') out.name = metaName;
-  if (!out.identifier && typeof metaName === 'string') out.identifier = slugify(String(metaName));
-
-  if (typeof raw.pubkey === 'string') {
-    try { out.npub = nip19.npubEncode(raw.pubkey); } catch {}
-    out.pubkey = raw.pubkey;
-    if (typeof out.identifier === 'string') {
-      try {
-        out.naddr = nip19.naddrEncode({ kind: typeof raw.kind === 'number' ? raw.kind : 32616, pubkey: raw.pubkey, identifier: out.identifier });
-      } catch {}
-    }
-  }
-
-  out.publisherShort = abbreviate(out.npub || out.pubkey);
-  if (!out.publisherName) out.publisherName = out.publisherShort;
-  if (!out.publisherImage && out.publisherProfile) {
-    const pic = out.publisherProfile.picture || out.publisherProfile.image;
-    if (pic) out.publisherImage = pic;
-  }
-  out.publisherImageMarkdown = buildImageMarkdown(out.publisherImage, IMAGE_SIZE);
-
-  if (typeof raw.created_at === 'number') out.created_at = raw.created_at;
-  return out;
-}
-
-function parseEventContent(event: any): any | null {
-  try {
-    if (event && typeof event.content === 'string') {
-      return JSON.parse(event.content);
-    }
-  } catch {}
-  return null;
-}
-
-function abbreviate(value?: string | null, leading = 8): string {
-  if (!value) return '';
-  const str = String(value);
-  if (str.length <= leading + 2) return str;
-  return `${str.slice(0, leading)}…${str.slice(-4)}`;
-}
-
-function buildImageMarkdown(url: string | undefined, width: number): string {
-  if (!url) return '';
-  const sized = ensureImageWidthParam(url, width);
-  return `![avatar](${sized})`;
 }
 
 export function AppView({ id }: { id: string }) {

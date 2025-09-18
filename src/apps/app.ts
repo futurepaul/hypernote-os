@@ -69,6 +69,8 @@ icon: folder.png
   "#t": ["hypernote-application"]
   limit: 20
   sort: created_at:desc
+  pipe:
+    - json: { from: content, as: parsed }
 "$profile":
   args: [pubkey]
   query:
@@ -77,6 +79,8 @@ icon: folder.png
     limit: 1
   pipe:
     - first
+    - json: { from: content, as: parsed }
+    - get: parsed
 "$apps_enriched":
   from: $apps
   pipe:
@@ -94,19 +98,19 @@ icon: folder.png
 from: $apps_enriched
 as: app
 \`\`\`
-{{ app.publisherImageMarkdown }}
+![avatar]({{ app.1.picture }})
 
-### {{ app.name }}
+### {{ app.0.parsed.meta.name }}
 
-Version {{ app.version }} • {{ app.publisherName }}
+Version {{ app.0.parsed.version }} • {{ app.1.display_name }} {{ app.1.name }}
 
-{{ app.description }}
+{{ app.0.parsed.meta.description }}
 
 \`\`\`button
 text: Install
 action: "@install_app"
 payload:
-  naddr: "{{ app.naddr }}"
+  naddr: "{{ app.0.naddr }}"
 \`\`\`
 
 ---

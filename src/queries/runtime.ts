@@ -4,6 +4,7 @@
 import { getDefaultStore } from 'jotai'
 import { hypersauceClientAtom } from '../state/hypersauce'
 import { mergeScalars, windowScalarsAtom } from '../state/queriesAtoms'
+import { nip19 } from 'nostr-tools'
 
 type Unsub = () => void;
 
@@ -66,25 +67,7 @@ class QueryRuntime {
         .subscribe({
           next: (resultMap: Map<string, any>) => {
             const scalars: Record<string, any> = {};
-            for (const [qid, value] of resultMap) {
-              if (
-                value == null ||
-                typeof value === 'string' ||
-                typeof value === 'number' ||
-                typeof value === 'boolean'
-              ) {
-                scalars[qid] = value ?? '';
-              } else if (Array.isArray(value)) {
-                const arr = value.slice();
-                if (arr.length > 0) (arr as any).first = arr[0];
-                scalars[qid] = arr;
-                scalars[qid + '.length'] = arr.length; // legacy convenience
-              } else if (typeof value === 'object') {
-                scalars[qid] = value; // allow path access like {{$profile.name}}
-              } else {
-                scalars[qid] = '';
-              }
-            }
+            for (const [qid, value] of resultMap) scalars[qid] = decorateValue(value);
             // Push into per-window Jotai atom to avoid global re-renders
             try {
               const store = getDefaultStore();
@@ -108,3 +91,22 @@ class QueryRuntime {
 
 export const queryRuntime = new QueryRuntime();
 // @ts-nocheck
+
+function decorateValue(value: any): any {
+  if (Array.isArray(value)) return value.map(decorateValue);
+  if (!value || typeof value !== 'object') return value;
+  if (typeof value.kind === 'number' && typeof value.pubkey === 'string') {
+    const out: any = { ...value };
+    if (typeof out.pubkey === 'string' && !out.npub) {
+      try { out.npub = nip19.npubEncode(out.pubkey); } catch {}
+    }
+    if (typeof out.pubkey === 'string' && Array.isArray(out.tags)) {
+      const identifier = out.tags.find((tag: any) => Array.isArray(tag) && tag[0] === 'd')?.[1];
+      if (identifier && !out.naddr) {
+        try { out.naddr = nip19.naddrEncode({ kind: out.kind, pubkey: out.pubkey, identifier: String(identifier) }); } catch {}
+      }
+    }
+    return out;
+  }
+  return value;
+}

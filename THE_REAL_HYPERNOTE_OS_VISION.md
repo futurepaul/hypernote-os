@@ -65,6 +65,18 @@ Status: PARTIAL. Generic `login()` + `publishEvent()` added to Hypersauce; `publ
 - Future: render directly from MDAST without converting to HTML once UI supports it (safer interpolation, less mutation).
 - Status: PARTIAL (base AST swap complete).
 
+##### Phase 2.5a — Pure Tuple Renderer (Planned)
+- Collapse `AppView.tsx` down to a generic markdown renderer. Inputs are `{ globals, queries }`; outputs are markdown → DOM. No per-app special casing.
+- Runtime contract: each `$query` resolves to raw arrays, maps, or enrich tuples. We expose tuple members via numeric indexes (`item.0`, `item.1`, …) and never decorate them in React.
+- All presentation shaping (slugs, avatar fallbacks, display labels) happens in YAML pipes (`map`, `default`, `coalesce`, `project`). If an app needs a helper, it lives in the query layer, not the renderer.
+- Action buttons keep working via generic payload interpolation; we remove payload munging and publisher helpers from `AppView.tsx`.
+- Deliverables:
+  1. Strip `AppView.tsx` back to: compile markdown → render nodes → evaluate interpolations. Delete publisher/slug/image helpers and any tuple mutation logic.
+  2. Update `queryRuntime` to stop injecting fallback data; it simply returns what Hypersauce produced (events, tuples, maps).
+  3. Rewrite bundled apps (App Store, etc.) so queries compute `display_label`, `avatar_url`, etc., and markdown references tuple indices (`{{ app.0.meta.name }}`, `{{ app.1.picture }}`) or pipe-produced fields (`{{ app.profile.display_label }}` when the query writes that).
+  4. Adjust tests to assert that compile/decompile + render works with tuple access, and add regression coverage for rejecting html while ensuring tuple interpolation passes through untouched.
+- Acceptance: deleting `AppView.tsx` should essentially break rendering; adding back the minimal renderer restores everything without re-implementing special cases.
+
 ### Phase 3 — Actions (write to Nostr)
 Goal: Let apps define write actions using a minimal, explicit schema.
 
