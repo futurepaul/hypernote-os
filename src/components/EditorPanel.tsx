@@ -1,22 +1,50 @@
 // @ts-nocheck
 import { useEffect, useMemo, useRef, useState } from "react";
 import OverType from "overtype";
-import { useAtom, useSetAtom } from 'jotai'
-import { docsAtom, openWindowsAtom, openWindowAtom } from '../state/appAtoms'
+import { useAtom, useSetAtom, useAtomValue } from 'jotai'
+import { docsAtom, openWindowsAtom, openWindowAtom, bringWindowToFrontAtom, relaysAtom, editorSelectionAtom } from '../state/appAtoms'
 import { parseFrontmatterName } from "../state/docs";
 import { getDefaultDocs, saveUserDocs, loadUserDocs, clearUserDocs, isDefaultDocId } from '../state/docs'
+import { compileMarkdownDoc } from '../compiler'
+import { publishApp, installByNaddr } from '../services/apps'
 
 export function EditorPanel() {
   const [docs, setDocs] = useAtom(docsAtom)
   const openWin = useSetAtom(openWindowAtom)
   const setOpenWindows = useSetAtom(openWindowsAtom)
-  const files = useMemo(() => ["profile", "wallet", "clock", "apps"], [])
-  const [current, setCurrent] = useState<string>(files[0])
-  const [value, setValue] = useState<string>(docs[current as keyof typeof docs] || "")
+  const bringToFront = useSetAtom(bringWindowToFrontAtom)
+  const relays = useAtomValue(relaysAtom)
+  const builtinOrder = useMemo(() => Object.keys(getDefaultDocs()), [])
+  const files = useMemo(() => {
+    const seen = new Set<string>()
+    const ordered: string[] = []
+    builtinOrder.forEach((id) => {
+      if (docs[id as keyof typeof docs]) {
+        ordered.push(id)
+        seen.add(id)
+      }
+    })
+    Object.keys(docs).forEach((id) => {
+      if (!seen.has(id)) ordered.push(id)
+    })
+    return ordered
+  }, [docs, builtinOrder])
+  const [current, setCurrent] = useAtom(editorSelectionAtom)
+  const [value, setValue] = useState<string>(() => (current ? (docs[current as keyof typeof docs] || '') : ''))
+  const [publishing, setPublishing] = useState(false)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const editorRef = useRef<any>(null)
 
   useEffect(() => {
+    if (!files.length) return
+    if (!current || !files.includes(current)) setCurrent(files[0])
+  }, [files, current])
+
+  useEffect(() => {
+    if (!current) {
+      setValue('')
+      return
+    }
     setValue(docs[current as keyof typeof docs] || "")
   }, [current, docs])
 
@@ -47,6 +75,46 @@ export function EditorPanel() {
     if (!isDefaultDocId(current)) {
       const userDocs = loadUserDocs()
       saveUserDocs({ ...userDocs, [current]: value })
+    }
+  }
+
+  async function publish() {
+    if (!current) {
+      alert('Select a document before publishing.')
+      return
+    }
+    let compiled: { meta: any; ast: any }
+    try {
+      compiled = compileMarkdownDoc(value)
+    } catch (e) {
+      alert('Failed to compile document: ' + (e as any)?.message)
+      return
+    }
+    if (!compiled?.meta || typeof compiled.meta !== 'object' || !compiled.meta.name) {
+      alert('Frontmatter must include a `name` before publishing.')
+      return
+    }
+    setPublishing(true)
+    try {
+      const { meta, ast } = compiled
+      const { naddr } = await publishApp({ meta, ast }, relays)
+      const installed = await installByNaddr(naddr, relays)
+      setDocs(prev => ({ ...prev, [installed.id]: installed.markdown }))
+      if (!isDefaultDocId(installed.id)) {
+        const userDocs = loadUserDocs()
+        saveUserDocs({ ...userDocs, [installed.id]: installed.markdown })
+      }
+      setCurrent(installed.id)
+      setValue(installed.markdown)
+      try {
+        openWin(installed.id)
+        bringToFront(installed.id)
+      } catch {}
+      alert(`Published! ${naddr}`)
+    } catch (e) {
+      alert('Publish failed: ' + (e as any)?.message)
+    } finally {
+      setPublishing(false)
     }
   }
 
@@ -94,6 +162,11 @@ export function EditorPanel() {
           <div className="font-semibold text-sm mr-2">File</div>
           <button onClick={newDoc} className="px-2 py-0.5 text-sm bg-[var(--win-bg)] text-gray-900 border border-[var(--bevel-dark)] shadow-[inset_-1px_-1px_0_0_var(--bevel-dark),inset_1px_1px_0_0_var(--bevel-light)] hover:brightness-105">New</button>
           <button onClick={save} className="px-2 py-0.5 text-sm bg-[var(--win-bg)] text-gray-900 border border-[var(--bevel-dark)] shadow-[inset_-1px_-1px_0_0_var(--bevel-dark),inset_1px_1px_0_0_var(--bevel-light)] hover:brightness-105">Save</button>
+          <button
+            onClick={publish}
+            disabled={publishing}
+            className={`px-2 py-0.5 text-sm border border-[var(--bevel-dark)] shadow-[inset_-1px_-1px_0_0_var(--bevel-dark),inset_1px_1px_0_0_var(--bevel-light)] ${publishing ? 'opacity-70 cursor-not-allowed bg-[var(--chrome-bg)] text-gray-600' : 'bg-[var(--win-bg)] text-gray-900 hover:brightness-105'}`}
+          >{publishing ? 'Publishing…' : 'Publish'}</button>
           <button
             onClick={() => {
               if (confirm('Reset to default docs? This will remove your local apps.')) {

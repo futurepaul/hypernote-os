@@ -2,7 +2,7 @@ import { useEffect, useRef, type PropsWithChildren } from "react";
 import { useAtom, useSetAtom, useAtomValue } from 'jotai'
 import { windowPosAtom, windowZAtom, bringWindowToFrontAtom, activeWindowAtom } from '../state/appAtoms'
 
-export function DraggableWindow({ id, title, children, contentClassName, onClose }: PropsWithChildren<{ id: string; title?: string; contentClassName?: string; onClose?: () => void }>) {
+export function DraggableWindow({ id, title, children, contentClassName, onClose, onEdit }: PropsWithChildren<{ id: string; title?: string; contentClassName?: string; onClose?: () => void; onEdit?: () => void }>) {
   const dragRef = useRef<HTMLDivElement | null>(null);
   const isDragging = useRef(false);
   const offset = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -59,7 +59,7 @@ export function DraggableWindow({ id, title, children, contentClassName, onClose
     >
       <div className="border border-[var(--bevel-dark)] shadow-[inset_-2px_-2px_0_0_var(--bevel-dark),inset_2px_2px_0_0_var(--bevel-light)] bg-[var(--chrome-bg)]">
         <div
-          className={`cursor-grab ${titlebarClass} px-2 py-1 text-sm font-semibold shadow-[inset_0_1px_0_0_var(--bevel-light)] flex items-center gap-2`}
+          className={`cursor-grab ${titlebarClass} px-2 py-1 text-sm font-semibold shadow-[inset_0_1px_0_0_var(--bevel-light)] relative flex items-center justify-center`}
           onPointerDown={onPointerDownTitle}
         >
           {onClose && (
@@ -67,10 +67,22 @@ export function DraggableWindow({ id, title, children, contentClassName, onClose
               aria-label="Close"
               onPointerDown={(e) => { e.stopPropagation(); }}
               onClick={(e) => { e.stopPropagation(); onClose?.(); }}
-              className="w-4 h-4 border border-[var(--bevel-dark)] bg-[var(--win-bg)] shadow-[inset_-1px_-1px_0_0_var(--bevel-dark),inset_1px_1px_0_0_var(--bevel-light)] hover:brightness-105"
+              className="w-4 h-4 border border-[var(--bevel-dark)] bg-[var(--win-bg)] shadow-[inset_-1px_-1px_0_0_var(--bevel-dark),inset_1px_1px_0_0_var(--bevel-light)] hover:brightness-105 absolute left-2"
             />
           )}
-          {title ?? id}
+          <div className="pointer-events-none">
+            <span>{title ?? id}</span>
+          </div>
+          {onEdit && (
+            <button
+              aria-label="Edit"
+              onPointerDown={(e) => { e.stopPropagation(); }}
+              onClick={(e) => { e.stopPropagation(); onEdit?.(); }}
+              className="px-2 py-0.5 text-xs border border-[var(--bevel-dark)] bg-[var(--win-bg)] text-gray-900 shadow-[inset_-1px_-1px_0_0_var(--bevel-dark),inset_1px_1px_0_0_var(--bevel-light)] hover:brightness-105 absolute right-2"
+            >
+              Edit
+            </button>
+          )}
         </div>
         <div className={contentClassName ?? "bg-[var(--win-bg)] p-3 text-sm text-gray-900"}>{children}</div>
       </div>

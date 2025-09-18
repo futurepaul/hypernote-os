@@ -36,6 +36,18 @@ function encodeNode(n: UiNode): string {
     const end = `\n\`\`\`${kind}.end\n\`\`\`\n`
     return `${start}${body}${end}`
   }
+  if (n.type === 'each') {
+    const data = n.data || {}
+    const payload: Record<string, any> = {
+      from: String(data.source || '$items'),
+    }
+    if (data.as) payload.as = data.as
+    const y = YAML.stringify(payload).trimEnd()
+    const start = `\n\`\`\`each\n${y}\n\`\`\`\n`
+    const body = (n.children || []).map(encodeNode).join('\n')
+    const end = `\n\`\`\`each.end\n\`\`\`\n`
+    return `${start}${body}${end}`
+  }
   return ''
 }
 

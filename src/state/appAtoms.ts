@@ -47,6 +47,7 @@ export const windowLayoutAtom = atom(
 export const docsAtom = atom<Record<string, string>>(getInitialDocs())
 // Select a single doc by id to avoid re-renders from unrelated doc changes
 export const docAtom = atomFamily((id: string) => atom((get) => (get(docsAtom)[id] || '')))
+export const editorSelectionAtom = atom<string>(defaultDocIds[0] || '')
 
 // Track which windows are open (rendered). Initialized with all doc ids.
 const initialOpen = Object.keys(getInitialDocs())

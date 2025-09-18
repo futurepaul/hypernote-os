@@ -75,10 +75,10 @@ class QueryRuntime {
               ) {
                 scalars[qid] = value ?? '';
               } else if (Array.isArray(value)) {
-                const summary: any = { length: value.length };
-                if (value.length > 0) summary.first = value[0];
-                scalars[qid] = summary;
-                scalars[qid + '.length'] = value.length; // legacy convenience
+                const arr = value.slice();
+                if (arr.length > 0) (arr as any).first = arr[0];
+                scalars[qid] = arr;
+                scalars[qid + '.length'] = arr.length; // legacy convenience
               } else if (typeof value === 'object') {
                 scalars[qid] = value; // allow path access like {{$profile.name}}
               } else {

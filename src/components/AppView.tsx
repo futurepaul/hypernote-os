@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState, useRef, type ReactNode } from "react";
+import { useMemo, useEffect, useState, useRef, Fragment, type ReactNode } from "react";
 import { nip19, getPublicKey } from "nostr-tools";
 import { compileMarkdownDoc, type UiNode } from "../compiler";
 import { useAtomValue, useAtom } from 'jotai'
@@ -8,21 +8,21 @@ import { formsAtom } from '../state/formsAtoms'
 import { queryRuntime } from '../queries/runtime'
 import { interpolate as interp, resolveImgDollarSrc } from '../interp/interpolate'
 import { useAction, normalizeActionName } from '../state/actions'
+import { slugify } from '../services/apps'
 
 type Node = UiNode;
 
 
-function interpolate(text: string, globals: any, windowId: string, queryScalars: Record<string, Record<string, any>>) {
-  return interp(text, { globals, queries: queryScalars[windowId] || {} })
+function interpolateText(text: string, globals: any, queries: Record<string, any>) {
+  return interp(text, { globals, queries })
 }
 
 // parsing/compilation is handled by compiler.ts
 
-function HtmlNode({ n, globals, windowId, queryScalars }: { n: Node; globals: any; windowId: string; queryScalars: Record<string, Record<string, any>> }) {
+function HtmlNode({ n, globals, queries }: { n: Node; globals: any; queries: Record<string, any> }) {
   const deps = useMemo(() => {
     const refs = n.refs || []
-    const qsAny: any = queryScalars as any
-    const q: Record<string, any> = (qsAny && typeof qsAny === 'object') ? (qsAny[windowId] || {}) : {}
+    const q: Record<string, any> = (queries && typeof queries === 'object') ? queries : {}
     const getPath = (obj: any, path: string) => path.split('.').reduce((acc, k) => (acc && typeof acc === 'object') ? acc[k] : undefined, obj)
     return refs.map(ref => {
       if (ref === 'time.now') return String(globals?.time?.now ?? '')
@@ -35,19 +35,19 @@ function HtmlNode({ n, globals, windowId, queryScalars }: { n: Node; globals: an
       }
       return String(getPath(globals, ref) ?? '')
     })
-  }, [n.refs, windowId, queryScalars, globals])
+  }, [n.refs, queries, globals])
 
   const html = useMemo(() => {
-    const raw = interpolate(n.html || '', globals, windowId, queryScalars)
-    return resolveImgDollarSrc(raw, queryScalars[windowId] || {})
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    const raw = interpolateText(n.html || '', globals, queries)
+    return resolveImgDollarSrc(raw, queries || {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [n.id, ...deps])
 
   return <div className="app-markdown" dangerouslySetInnerHTML={{ __html: html }} />
 }
 
-function ButtonNode({ text, globals, action, windowId, queryScalars }: { text?: string; globals: any; action?: string; windowId: string; queryScalars: Record<string, Record<string, any>> }) {
-  const label = (interpolate(String(text ?? ""), globals, windowId, queryScalars).trim() || "Button");
+function ButtonNode({ text, globals, action, windowId, queries }: { text?: string; globals: any; action?: string; windowId: string; queries: Record<string, any> }) {
+  const label = (interpolateText(String(text ?? ""), globals, queries).trim() || "Button");
   const run = useAction(action)
   const setPub = useAction('@set_pubkey')
   return (
@@ -104,11 +104,11 @@ function ButtonNode({ text, globals, action, windowId, queryScalars }: { text?: 
   );
 }
 
-function InputNode({ text, globals, windowId, name, queryScalars }: { text: string; globals: any; windowId: string; name?: string; queryScalars: Record<string, Record<string, any>> }) {
+function InputNode({ text, globals, windowId, name, queries }: { text: string; globals: any; windowId: string; name?: string; queries: Record<string, any> }) {
   const [, setForm] = useAtom(formsAtom(windowId))
   const [val, setVal] = useState("")
   const setPub = useAction('@set_pubkey')
-  const ph = interpolate(text || "", globals, windowId, queryScalars);
+  const ph = interpolateText(text || "", globals, queries);
   const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = e.target.value;
     setVal(v)
@@ -156,22 +156,186 @@ function InputNode({ text, globals, windowId, name, queryScalars }: { text: stri
   );
 }
 
-function RenderNodes({ nodes, globals, windowId, queryScalars }: { nodes: Node[]; globals: any; windowId: string; queryScalars: Record<string, Record<string, any>> }) {
+type RenderNodesProps = {
+  nodes: Node[];
+  globals: any;
+  windowId: string;
+  queries: Record<string, any>;
+  inline?: boolean;
+  debug?: boolean;
+};
+
+function RenderNodes({ nodes, globals, windowId, queries, inline = false, debug = false }: RenderNodesProps) {
   const renderNode = (n: Node, key: number): ReactNode => {
-    if (n.type === "html")
-      return <HtmlNode key={n.id || key} n={n} globals={globals} windowId={windowId} queryScalars={queryScalars} />;
-    if (n.type === "button") return <ButtonNode key={key} text={n.data?.text || ""} action={n.data?.action} globals={globals} windowId={windowId} queryScalars={queryScalars} />;
-    if (n.type === "input") return <InputNode key={key} text={n.data?.text || ""} name={n.data?.name} globals={globals} windowId={windowId} queryScalars={queryScalars} />;
-    if (n.type === "hstack" || n.type === "vstack")
+    if (n.type === "html") {
+      return <HtmlNode key={n.id || key} n={n} globals={globals} queries={queries} />;
+    }
+    if (n.type === "button") {
+      return (
+        <ButtonNode
+          key={key}
+          text={n.data?.text || ""}
+          action={n.data?.action}
+          globals={globals}
+          windowId={windowId}
+          queries={queries}
+        />
+      );
+    }
+    if (n.type === "input") {
+      return (
+        <InputNode
+          key={key}
+          text={n.data?.text || ""}
+          name={n.data?.name}
+          globals={globals}
+          windowId={windowId}
+          queries={queries}
+        />
+      );
+    }
+    if (n.type === "hstack" || n.type === "vstack") {
       return (
         <div key={key} className={n.type === "hstack" ? "flex flex-row gap-2" : "flex flex-col gap-2"}>
-          {(n.children || []).map((c, j) => renderNode(c, j) as any)}
+          {(n.children || []).map((c, j) => (
+            <RenderNodes
+              key={`${c.id || j}`}
+              nodes={[c]}
+              globals={globals}
+              windowId={windowId}
+              queries={queries}
+              inline
+              debug={debug}
+            />
+          ))}
         </div>
       );
+    }
+    if (n.type === "each") {
+      return (
+        <EachNode
+          key={n.id || key}
+          node={n}
+          globals={globals}
+          windowId={windowId}
+          queries={queries}
+          debug={debug}
+        />
+      );
+    }
     return null;
   };
 
-  return <div className="flex flex-col gap-2">{nodes.map((n, i) => renderNode(n, i))}</div>;
+  const content = nodes.map((n, i) => renderNode(n, i));
+  if (inline) return <>{content}</>;
+  return <div className="flex flex-col gap-2">{content}</div>;
+}
+
+type EachNodeProps = {
+  node: Node;
+  globals: any;
+  windowId: string;
+  queries: Record<string, any>;
+  debug?: boolean;
+};
+
+function EachNode({ node, globals, windowId, queries, debug = false }: EachNodeProps) {
+  const data = node.data || {};
+  const sourceRaw = typeof data.source === 'string' ? data.source : '$items';
+  const source = sourceRaw.trim() || '$items';
+  const asName = typeof data.as === 'string' && data.as.length > 0 ? data.as : 'item';
+  const listRaw = queries ? queries[source] : undefined;
+  const list = normalizeEachList(listRaw);
+  if (debug) console.log(`[Each] source=${source}`, { raw: listRaw, derivedLength: list.length });
+  if (!list.length) return null;
+
+  return (
+    <div className="flex flex-col gap-3">
+      {list.map((item, index) => {
+        const enhanced = enhanceLoopItem(item);
+        const loopGlobals = { ...globals, [asName]: enhanced, [`${asName}Index`]: index };
+        return (
+          <Fragment key={`${node.id || 'each'}-${index}`}>
+            <RenderNodes
+              nodes={node.children || []}
+              globals={loopGlobals}
+              windowId={windowId}
+              queries={queries}
+              inline
+              debug={debug}
+            />
+          </Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+function normalizeEachList(value: any): any[] {
+  if (Array.isArray(value)) return value;
+  if (!value) return [];
+  if (value instanceof Map) return Array.from(value.values());
+  if (typeof value === 'object') {
+    if (Array.isArray((value as any).items)) return (value as any).items;
+    if (Array.isArray((value as any).events)) return (value as any).events;
+    if (Array.isArray((value as any).results)) return (value as any).results;
+  }
+  return [];
+}
+
+function enhanceLoopItem(raw: any): any {
+  if (!raw || typeof raw !== 'object') return raw;
+  const out: any = Array.isArray(raw) ? raw.slice() : { ...raw };
+  out.event = raw;
+
+  if (typeof raw.content === 'string') {
+    try {
+      const parsed = JSON.parse(raw.content);
+      out.content_json = parsed;
+      if (parsed && typeof parsed === 'object') {
+        if (parsed.meta && typeof parsed.meta === 'object') {
+          out.meta = parsed.meta;
+          if (parsed.meta.name && !out.name) out.name = parsed.meta.name;
+          if (parsed.meta.description && !out.description) out.description = parsed.meta.description;
+        }
+        if (parsed.version && !out.version) out.version = parsed.version;
+        if (parsed.ast && !out.ast) out.ast = parsed.ast;
+      }
+    } catch {}
+  }
+
+  const tagsArray: any[] = Array.isArray(raw.tags) ? raw.tags : [];
+  if (tagsArray.length) {
+    const tagMap: Record<string, string[]> = {};
+    for (const tag of tagsArray) {
+      if (Array.isArray(tag) && tag.length >= 2) {
+        const [name, value] = tag;
+        if (!tagMap[name]) tagMap[name] = [];
+        if (value != null) tagMap[name].push(String(value));
+      }
+    }
+    if (Object.keys(tagMap).length) out.tagMap = tagMap;
+    const dTag = tagMap['d']?.[0];
+    if (dTag && !out.identifier) out.identifier = dTag;
+    if (!out.version && tagMap['hypernote']?.[0]) out.version = tagMap['hypernote'][0];
+    if (!out.kindLabel && tagMap['hypernote-type']?.[0]) out.kindLabel = tagMap['hypernote-type'][0];
+  }
+
+  const metaName = out.meta && typeof out.meta === 'object' ? out.meta.name : undefined;
+  if (!out.name && typeof metaName === 'string') out.name = metaName;
+  if (!out.identifier && typeof metaName === 'string') out.identifier = slugify(String(metaName));
+
+  if (typeof raw.pubkey === 'string') {
+    try { out.npub = nip19.npubEncode(raw.pubkey); } catch {}
+    if (typeof out.identifier === 'string') {
+      try {
+        out.naddr = nip19.naddrEncode({ kind: typeof raw.kind === 'number' ? raw.kind : 32616, pubkey: raw.pubkey, identifier: out.identifier });
+      } catch {}
+    }
+  }
+
+  if (typeof raw.created_at === 'number') out.created_at = raw.created_at;
+  return out;
 }
 
 export function AppView({ id }: { id: string }) {
@@ -186,15 +350,15 @@ export function AppView({ id }: { id: string }) {
   // Select only the slices we need for this window
   const globalsUser = useAtomValue(userAtom);
   const timeNow = useAtomValue(windowTimeAtom(id));
-  const windowScalars = useAtomValue(windowScalarsAtom(id));
+  const rawScalars = useAtomValue(windowScalarsAtom(id));
   const forms = useAtomValue(formsAtom(id))
   const globals = useMemo(() => ({ user: globalsUser, time: { now: timeNow }, form: forms }), [globalsUser, timeNow, forms]);
   // Fallback: if Hypersauce queries are unavailable, derive $profile from user.profile
   const mergedScalars = useMemo(() => {
     const fb: Record<string, any> = {}
     if (globals.user?.profile) fb['$profile'] = globals.user.profile
-    return { ...fb, ...(windowScalars || {}) }
-  }, [globals.user?.profile, windowScalars])
+    return { ...fb, ...(rawScalars || {}) }
+  }, [globals.user?.profile, rawScalars])
 
   // Per-render logging to trace causes
   const renderCount = useRef(0);
@@ -203,8 +367,9 @@ export function AppView({ id }: { id: string }) {
     const n = ++renderCount.current;
     try {
       // summarize keys to avoid huge logs
-      const k = Object.keys(windowScalars || {});
-      console.log(`[Render] AppView ${id} #${n}`, { docLen: doc.length, usesTime, timeNow, userPubkey: globalsUser?.pubkey, scalars: k });
+      const k = Object.keys(rawScalars || {});
+      // Useful for debugging where re-renders are happening but noisy because of the clock
+      // console.log(`[Render] AppView ${id} #${n}`, { docLen: doc.length, usesTime, timeNow, userPubkey: globalsUser?.pubkey, scalars: k });
     } catch {}
   });
 
@@ -218,8 +383,8 @@ export function AppView({ id }: { id: string }) {
     if (debug) console.log(`[Cause] ${id}: user.pubkey`, globalsUser?.pubkey);
   }, [globalsUser?.pubkey, debug]);
   useEffect(() => {
-    if (debug) console.log(`[Cause] ${id}: queryScalars`, Object.keys(windowScalars || {}));
-  }, [windowScalars, debug]);
+    if (debug) console.log(`[Cause] ${id}: queries`, Object.keys(rawScalars || {}));
+  }, [rawScalars, debug]);
 
   // No artificial tick; re-render comes from globals/time.now store updates
 
@@ -237,7 +402,8 @@ export function AppView({ id }: { id: string }) {
   }, [id, compiled.meta, globals.user.pubkey, relays])
 
   const EMPTY: Record<string, any> = useMemo(() => ({}), []);
-  return <RenderNodes nodes={nodes} globals={globals} windowId={id} queryScalars={{ [id]: mergedScalars ?? EMPTY }} />;
+  const queriesForWindow = mergedScalars ?? EMPTY;
+  return <RenderNodes nodes={nodes} globals={globals} windowId={id} queries={queriesForWindow} debug={debug} />;
 }
 
 export function parseFrontmatterName(doc: string): string | undefined {

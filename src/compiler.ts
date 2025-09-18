@@ -5,7 +5,7 @@ import { toText as htmlToText } from "very-small-parser/lib/html/toText";
 
 export type UiNode = {
   id: string;
-  type: "html" | "button" | "input" | "hstack" | "vstack";
+  type: "html" | "button" | "input" | "hstack" | "vstack" | "each";
   children?: UiNode[];
   html?: string;
   data?: any;
@@ -92,7 +92,8 @@ export function compileMarkdownDoc(md: string): CompiledDoc {
 
   for (const t of body) {
     if (t.type === "code") {
-      const info = (t.lang || "").trim().toLowerCase();
+      const langRaw = (t.lang || "").trim();
+      const info = langRaw.toLowerCase();
       if (info === "button") {
         flush();
         const data = safeParseYamlBlock((t.value || "").trim());
@@ -117,6 +118,22 @@ export function compileMarkdownDoc(md: string): CompiledDoc {
         const node: UiNode = { id: genId(), type: "vstack", children: [] };
         pushNode(node);
         stack.push({ node, group: [] });
+        continue;
+      }
+      if (info === "each") {
+        flush();
+        const data = safeParseYamlBlock((t.value || "").trim());
+        let source = String((data?.from ?? data?.source) || '$items');
+        let as = String(data?.as || 'item');
+        if (as.startsWith('$')) as = as.slice(1);
+        const node: UiNode = { id: genId(), type: "each", children: [], data: { source, as } };
+        pushNode(node);
+        stack.push({ node, group: [] });
+        continue;
+      }
+      if (info === "each end" || info === "each.end") {
+        flush();
+        if (stack.length > 1) stack.pop();
         continue;
       }
       if (info === "hstack end" || info === "hstack.end" || info === "vstack end" || info === "vstack.end") {

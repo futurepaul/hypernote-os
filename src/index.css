@@ -20,10 +20,10 @@ body {
   background-size: auto; /* no scaling */
   background-position: top left;
   /* Try to reduce anti-aliasing for a retro feel */
-  -webkit-font-smoothing: none;
-  -moz-osx-font-smoothing: auto;
-  font-smooth: never;
-  text-rendering: optimizeSpeed;
+  /* -webkit-font-smoothing: none; */
+  /* -moz-osx-font-smoothing: auto; */
+  /* font-smooth: never; */
+  /* text-rendering: optimizeSpeed; */
 }
 
 /* Minimal markdown styling for rendered HTML */
@@ -35,6 +35,18 @@ body {
 }
 .app-markdown p {
   margin: 0.25rem 0;
+}
+
+.app-markdown {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.app-markdown code,
+.app-markdown pre,
+.app-markdown tt {
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* Markdown image support */

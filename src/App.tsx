@@ -1,7 +1,7 @@
 import "./index.css";
-import { useEffect } from "react";
+import { useEffect, useCallback } from "react";
 import { useAtomValue, useSetAtom, useAtom } from 'jotai'
-import { docsAtom, timeNowAtom, closeWindowAtom, openWindowsAtom, openWindowAtom, bringWindowToFrontAtom, relaysAtom, bootStageAtom, userAtom } from './state/appAtoms'
+import { docsAtom, timeNowAtom, closeWindowAtom, openWindowsAtom, openWindowAtom, bringWindowToFrontAtom, relaysAtom, bootStageAtom, userAtom, editorSelectionAtom } from './state/appAtoms'
 import { hypersauceClientAtom } from './state/hypersauce'
 import { LoginWindow } from './components/LoginWindow'
 import { parseFrontmatterName } from './state/docs'
@@ -20,7 +20,9 @@ export function App() {
   const docs = useAtomValue(docsAtom)
   const openIds = useAtomValue(openWindowsAtom)
   const closeWindow = useSetAtom(closeWindowAtom)
+  const openWindow = useSetAtom(openWindowAtom)
   const bringToFront = useSetAtom(bringWindowToFrontAtom)
+  const setEditorSelection = useSetAtom(editorSelectionAtom)
   const setHS = useSetAtom(hypersauceClientAtom)
   const relays = useAtomValue(relaysAtom)
   const [bootStage, setBootStage] = useAtom(bootStageAtom)
@@ -31,8 +33,8 @@ export function App() {
     let alive = true
     ;(async () => {
       try {
-        const mod: any = await import('hypersauce')
-        const HS = mod?.HypersauceClient ?? mod?.default?.HypersauceClient
+        const mod: any = await import('../../hypersauce/client.ts')
+        const HS = mod?.HypersauceClient
         if (!HS) throw new Error('Hypersauce export missing')
         const client = new HS({ relays })
         if (!alive) return
@@ -49,6 +51,12 @@ export function App() {
   }, [])
   // No bridge needed; inputs call Jotai actions directly now
 
+  const handleEdit = useCallback((targetId: string) => {
+    setEditorSelection(targetId)
+    openWindow('editor')
+    bringToFront('editor')
+  }, [setEditorSelection, openWindow, bringToFront])
+
   return (
     <main className="min-h-screen text-gray-900">
       <div className="max-w-3xl mx-auto px-6 py-16">
@@ -62,6 +70,7 @@ export function App() {
       ) : openIds.map((id) => {
         const doc = docs[id]
         if (!doc) return null
+        const canEdit = id !== 'editor'
         return (
           <DraggableWindow
             key={id}
@@ -69,6 +78,7 @@ export function App() {
             title={parseFrontmatterName(doc) || id}
             contentClassName={id === 'editor' ? "bg-[var(--win-bg)] text-sm text-gray-900 p-0" : undefined}
             onClose={() => closeWindow(id)}
+            onEdit={canEdit ? () => handleEdit(id) : undefined}
           >
             {id === 'editor' ? <EditorPanel /> : id === 'apps' ? <AppSwitcherPanel /> : id === 'system' ? <SystemMenuPanel /> : <AppView id={id} />}
           </DraggableWindow>

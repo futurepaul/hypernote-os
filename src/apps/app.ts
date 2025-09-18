@@ -61,6 +61,37 @@ icon: folder.png
 ---
 Use the app switcher to activate windows.
 `,
+  'app-store': `---
+name: App Store
+icon: folder.png
+"$apps":
+  kinds: [32616]
+  "#t": ["hypernote-application"]
+  limit: 20
+  sort: created_at:desc
+---
+# Hypernote App Store
+
+{{ $apps.length }} published apps tagged hypernote 1.2.0.
+
+\`\`\`each
+from: $apps
+as: app
+\`\`\`
+### {{ app.name }}
+
+Version {{ app.version }} - Published by {{ app.npub }}
+
+{{ app.description }}
+
+**naddr:** \`{{ app.naddr }}\`
+
+---
+\`\`\`each.end
+\`\`\`
+
+If no apps appear yet, publish from the editor to populate the store.
+`,
   editor: `---
 name: Editor
 icon: edit.png
