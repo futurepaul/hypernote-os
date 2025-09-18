@@ -1,5 +1,7 @@
 import { nip19 } from 'nostr-tools'
 import { decompile } from '../decompiler'
+import { getDefaultStore } from 'jotai'
+import { hypersauceClientAtom } from '../state/hypersauce'
 
 export function slugify(name: string): string {
   return String(name || '')
@@ -11,8 +13,8 @@ export function slugify(name: string): string {
 }
 
 export async function publishApp({ meta, ast }: { meta: any; ast: any }, relays: string[]) {
-  const { HypersauceClient } = await import('hypersauce') as any
-  const client = new HypersauceClient({ relays })
+  const client = getDefaultStore().get(hypersauceClientAtom) as any
+  if (!client) throw new Error('Hypersauce client not initialized')
   const name = String(meta?.name || 'app')
   const d = slugify(name)
   const content = JSON.stringify({ version: '1.2.0', meta, ast })
@@ -48,8 +50,8 @@ export async function installByNaddr(naddr: string, relays: string[]): Promise<{
       pipe: [ 'first', { json: { from: 'content' } } ]
     }
   }
-  const { HypersauceClient } = await import('hypersauce') as any
-  const client = new HypersauceClient({ relays })
+  const client = getDefaultStore().get(hypersauceClientAtom) as any
+  if (!client) throw new Error('Hypersauce client not initialized')
   const sub = client.runQueryDocumentLive(metaDoc as any, { user: {} })
   return await new Promise((resolve, reject) => {
     const s = sub.subscribe({
@@ -68,4 +70,3 @@ export async function installByNaddr(naddr: string, relays: string[]): Promise<{
     })
   })
 }
-

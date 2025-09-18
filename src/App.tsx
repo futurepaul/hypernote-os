@@ -1,7 +1,9 @@
 import "./index.css";
 import { useEffect } from "react";
-import { useAtomValue, useSetAtom } from 'jotai'
-import { docsAtom, timeNowAtom, closeWindowAtom, openWindowsAtom, openWindowAtom, bringWindowToFrontAtom } from './state/appAtoms'
+import { useAtomValue, useSetAtom, useAtom } from 'jotai'
+import { docsAtom, timeNowAtom, closeWindowAtom, openWindowsAtom, openWindowAtom, bringWindowToFrontAtom, relaysAtom, bootStageAtom, userAtom } from './state/appAtoms'
+import { hypersauceClientAtom } from './state/hypersauce'
+import { LoginWindow } from './components/LoginWindow'
 import { parseFrontmatterName } from './state/docs'
 import { DraggableWindow } from './components/DraggableWindow'
 import { AppView } from './components/AppView'
@@ -19,6 +21,32 @@ export function App() {
   const openIds = useAtomValue(openWindowsAtom)
   const closeWindow = useSetAtom(closeWindowAtom)
   const bringToFront = useSetAtom(bringWindowToFrontAtom)
+  const setHS = useSetAtom(hypersauceClientAtom)
+  const relays = useAtomValue(relaysAtom)
+  const [bootStage, setBootStage] = useAtom(bootStageAtom)
+  const user = useAtomValue(userAtom)
+
+  // Initialize a single Hypersauce client at startup and when relays change
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const mod: any = await import('hypersauce')
+        const HS = mod?.HypersauceClient ?? mod?.default?.HypersauceClient
+        if (!HS) throw new Error('Hypersauce export missing')
+        const client = new HS({ relays })
+        if (!alive) return
+        setHS(client)
+        setBootStage(user.pubkey ? 'ready' : 'login')
+      } catch (e) {
+        console.warn('[Hypersauce] module not available', e)
+        setHS(null)
+        setBootStage('login')
+      }
+    })()
+    return () => { alive = false }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   // No bridge needed; inputs call Jotai actions directly now
 
   return (
@@ -29,7 +57,9 @@ export function App() {
           Frontend is running with plain Tailwind on port 3420.
         </p>
       </div>
-      {openIds.map((id) => {
+      {bootStage !== 'ready' ? (
+        <LoginWindow />
+      ) : openIds.map((id) => {
         const doc = docs[id]
         if (!doc) return null
         return (

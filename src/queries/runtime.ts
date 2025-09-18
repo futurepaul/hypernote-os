@@ -2,6 +2,7 @@
 // query subscriptions and emits only small derived scalars back to the store.
 
 import { getDefaultStore } from 'jotai'
+import { hypersauceClientAtom } from '../state/hypersauce'
 import { mergeScalars, windowScalarsAtom } from '../state/queriesAtoms'
 
 type Unsub = () => void;
@@ -21,29 +22,10 @@ class QueryRuntime {
   private warnedMissing = false;
 
   async ensureClient(relays: string[]): Promise<boolean> {
-    // Lazy load to avoid hard dependency unless used
-    if (!this.client) {
-      let mod: any = null;
-      try {
-        mod = await import(/* @vite-ignore */ 'hypersauce');
-      } catch (e) {
-        if (!this.warnedMissing) {
-          console.warn('[Hypersauce] module not available');
-          this.warnedMissing = true;
-        }
-        return false;
-      }
-      if (!mod || !mod.HypersauceClient) {
-        if (!this.warnedMissing) {
-          console.warn('[Hypersauce] HypersauceClient not found in module');
-          this.warnedMissing = true;
-        }
-        return false;
-      }
-      this.client = new mod.HypersauceClient({ relays });
-      this.relays = relays.slice();
-      return true;
-    }
+    const store = getDefaultStore()
+    const hs = store.get(hypersauceClientAtom) as any | null
+    if (!hs) { if (!this.warnedMissing) { console.warn('[Hypersauce] client not initialized'); this.warnedMissing = true } ; return false }
+    this.client = hs
     if (JSON.stringify(relays) !== JSON.stringify(this.relays)) {
       try { this.client.setRelays(relays); } catch {}
       this.relays = relays.slice();

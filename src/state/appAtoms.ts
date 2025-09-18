@@ -69,6 +69,7 @@ export const relaysAtom = atom<string[]>([
 export const debugAtom = atom<boolean>(false)
 
 export const userAtom = atom<{ pubkey: string | null; profile?: any }>({ pubkey: null })
+export const bootStageAtom = atom<'init' | 'login' | 'ready'>('init')
 export const timeNowAtom = atom<number>(Math.floor(Date.now() / 1000))
 // Only subscribe to global time for windows that reference time.now
 export const windowTimeAtom = atomFamily((id: string) => atom((get) => {

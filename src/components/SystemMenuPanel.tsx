@@ -14,8 +14,10 @@ export function SystemMenuPanel() {
 
   async function login() {
     try {
-      const { HypersauceClient } = await import('hypersauce') as any
-      const client = new HypersauceClient({ relays })
+      const { getDefaultStore } = await import('jotai')
+      const { hypersauceClientAtom } = await import('../state/hypersauce')
+      const client = getDefaultStore().get(hypersauceClientAtom) as any
+      if (!client) throw new Error('Hypersauce client not initialized')
       const { pubkey } = await client.login()
       setUser(u => ({ ...u, pubkey }))
       alert('Logged in as ' + pubkey.slice(0,8) + '…')
@@ -57,4 +59,3 @@ export function SystemMenuPanel() {
     </div>
   )
 }
-
