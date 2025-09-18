@@ -57,13 +57,13 @@ Goal: Publish current app to Nostr using Hypersauce API.
   - Local drafts: on publish success, install by returned `naddr` and replace draft with pointer.
 - Acceptance: editor can publish; app can be re‑installed anywhere by naddr and renders identically.
 
-Status: PARTIAL. Generic `login()` + `publishEvent()` added to Hypersauce; `publishApp()` wrapper and installer wired with markdown AST. TODO: extend App Store to refresh entries post-publish & expose install feedback in UI.
+Status: PARTIAL. Generic `login()` + `publishEvent()` added to Hypersauce; `publishApp()` wrapper and installer wired with markdown AST. New generic Markdown renderer + tests landed, and frontmatter actions now flow through the renderer/runtime stack. TODO: extend App Store to refresh entries post-publish & expose install feedback in UI.
 
 #### Phase 2.5 — Markdown AST Hardening (new)
 - Switch runtime to use very-small-parser MDAST throughout; remove HTML rendering path and reject inline HTML on compile.
 - Preserve YAML arrays and structural metadata during compile/decompile.
 - Future: render directly from MDAST without converting to HTML once UI supports it (safer interpolation, less mutation).
-- Status: PARTIAL (base AST swap complete).
+- Status: PARTIAL. Dedicated `MarkdownRenderer` replaced the hand-rolled HTML path, new interpolation tests cover moustache/`$` usage, and `markdown-editor` blocks reuse OverType inside the runtime. Still pending: finish tuple-only shaping so App Store enrich helpers move entirely into YAML pipes.
 
 ##### Phase 2.5a — Pure Tuple Renderer (Planned)
 - Collapse `AppView.tsx` down to a generic markdown renderer. Inputs are `{ globals, queries }`; outputs are markdown → DOM. No per-app special casing.
@@ -98,7 +98,7 @@ Goal: Let apps define write actions using a minimal, explicit schema.
   - `runAction(name, scope)` performs interpolation and asks Hypersauce to publish.
 - Acceptance: Profile or Wallet demo includes a working `@post_note` using form data.
 
-Status: PARTIAL. Action registry exists and works for `@load_profile`/`@set_pubkey`. Frontmatter‑defined publish actions via `publishEvent` — TODO.
+Status: DONE. Frontmatter-defined actions now interpolate against `{ globals, $form, queries }`, publish through Hypersauce, and clear referenced form fields. The Poast default app demonstrates a `markdown-editor` control feeding `@post_note` kind 1 events. Follow-up: surface publish result metadata (event ids) back to apps when needed.
 
 ### Phase 4 — Elements & Composition
 Goal: Support nested Hypernotes (elements) and param passing.
@@ -377,13 +377,14 @@ ANSWER: default relays are fine but circle back on this when we get close to pro
 
 ## Concrete Next Steps (Incremental, Simple)
 
-1) Phase 0: lock JSON AST and decompiler; add tests for round‑trip on all default apps.
+1) Phase 0: lock JSON AST and decompiler; add tests for round-trip on all default apps.
 2) Phase 1: switch “Add App” to accept `naddr`; create `installedAppsAtom`; install and cache fetched AST.
 3) Phase 2: expose `publishApp` in Hypersauce; add Editor “Publish” button; store returned `naddr`.
-4) Phase 3: extend frontmatter `actions:`; wire action publishing via Hypersauce.
-5) Phase 4: implement element embedding by `naddr` with optional props; basic cache.
-6) Phase 5: persist `installedApps` list to Nostr; merge with local on boot.
-7) Phase 6: image upload helper; surface in editor.
-8) Phase 7: tighten logs, add tests, document schema.
+4) Phase 3: extend frontmatter `actions:`; wire action publishing via Hypersauce. **DONE** — Poast ships as the first writer app.
+5) Refactor renderer: extract node components from `AppView.tsx` into a `nodes.tsx` module so the view stays thin and reusable.
+6) Phase 4: implement element embedding by `naddr` with optional props; basic cache.
+7) Phase 5: persist `installedApps` list to Nostr; merge with local on boot.
+8) Phase 6: image upload helper; surface in editor.
+9) Phase 7: tighten logs, add tests, document schema.
 
 All along: keep code tiny, push Nostr concerns into Hypersauce, and iterate behind feature flags where helpful.
