@@ -73,9 +73,12 @@ export function useAction(name?: string) {
         console.warn('@install_app: missing naddr payload')
         return
       }
+      console.log('@install_app: installing', naddr)
       try {
         const { installByNaddr } = await import('../services/apps')
+        console.log('@install_app: calling installByNaddr')
         const result = await installByNaddr(naddr, relays || [])
+        console.log('@install_app: installed doc', result.id)
         setDocs(prev => ({ ...prev, [result.id]: result.markdown }))
         if (!isDefaultDocId(result.id)) {
           const userDocs = loadUserDocs()

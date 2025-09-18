@@ -93,6 +93,9 @@ function ButtonNode({ text, globals, action, windowId, queries, payloadSpec }: {
             }
           }
           ensurePubFromForm().finally(() => {
+            if (process.env.NODE_ENV !== 'production') {
+              console.log('[ButtonNode] payload', payload)
+            }
             run(payload).catch(e => console.warn('action error', e))
           })
         } else {

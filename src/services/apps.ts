@@ -38,12 +38,14 @@ export async function publishApp({ meta, ast }: { meta: any; ast: any }, relays:
 export async function installByNaddr(naddr: string, relays: string[]): Promise<{ id: string; markdown: string; meta: any; ast: any }>
 {
   // Decode address
+  console.log('[installByNaddr] request', naddr)
   const decoded = nip19.decode(naddr)
   if (decoded.type !== 'naddr') throw new Error('Not an naddr')
   const data: any = decoded.data
   const kind = data.kind
   const pubkey = data.pubkey
   const identifier = data.identifier
+  console.log('[installByNaddr] decoded', { kind, pubkey, identifier })
   // Build a tiny live query doc to fetch the app event content
   const metaDoc: any = {
     '$app': {
@@ -69,11 +71,19 @@ export async function installByNaddr(naddr: string, relays: string[]): Promise<{
       next: (map: Map<string, any>) => {
         try {
           const raw = map.get('$app')
+          console.log('[installByNaddr] snapshot', raw)
           if (!raw) return
           const obj = typeof raw === 'string' ? safeJson(raw) : raw
           if (!obj || typeof obj !== 'object') return
-          const meta = obj.meta
-          const ast = obj.ast
+          let meta = obj.meta
+          let ast = obj.ast
+          if ((!meta || !ast) && typeof obj.content === 'string') {
+            const parsed = safeJson(obj.content)
+            if (parsed && typeof parsed === 'object') {
+              meta = parsed.meta
+              ast = parsed.ast
+            }
+          }
           if (!meta || !ast) return
           const md = decompile({ meta, ast } as any)
           const id = String(meta?.name ? slugify(meta.name) : identifier)
