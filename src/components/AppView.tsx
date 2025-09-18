@@ -46,8 +46,9 @@ function HtmlNode({ n, globals, queries }: { n: Node; globals: any; queries: Rec
   return <div className="app-markdown" dangerouslySetInnerHTML={{ __html: html }} />
 }
 
-function ButtonNode({ text, globals, action, windowId, queries }: { text?: string; globals: any; action?: string; windowId: string; queries: Record<string, any> }) {
+function ButtonNode({ text, globals, action, windowId, queries, payloadSpec }: { text?: string; globals: any; action?: string; windowId: string; queries: Record<string, any>; payloadSpec?: any }) {
   const label = (interpolateText(String(text ?? ""), globals, queries).trim() || "Button");
+  const payload = useMemo(() => buildPayload(payloadSpec, globals, queries), [payloadSpec, globals, queries])
   const run = useAction(action)
   const setPub = useAction('@set_pubkey')
   return (
@@ -92,7 +93,7 @@ function ButtonNode({ text, globals, action, windowId, queries }: { text?: strin
             }
           }
           ensurePubFromForm().finally(() => {
-            run().catch(e => console.warn('action error', e))
+            run(payload).catch(e => console.warn('action error', e))
           })
         } else {
           console.log("ButtonNode: no action defined");
@@ -179,6 +180,7 @@ function RenderNodes({ nodes, globals, windowId, queries, inline = false, debug 
           globals={globals}
           windowId={windowId}
           queries={queries}
+          payloadSpec={n.data?.payload}
         />
       );
     }
@@ -281,6 +283,16 @@ function normalizeEachList(value: any): any[] {
     if (Array.isArray((value as any).results)) return (value as any).results;
   }
   return [];
+}
+
+function buildPayload(spec: any, globals: any, queries: Record<string, any>) {
+  if (!spec || typeof spec !== 'object') return undefined
+  const out: Record<string, any> = {}
+  for (const [key, value] of Object.entries(spec)) {
+    if (typeof value === 'string') out[key] = interpolateText(value, globals, queries)
+    else out[key] = value
+  }
+  return out
 }
 
 function enhanceLoopItem(raw: any): any {

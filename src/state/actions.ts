@@ -1,6 +1,7 @@
 import { useAtomValue, useSetAtom } from 'jotai'
-import { relaysAtom, userAtom } from './appAtoms'
+import { relaysAtom, userAtom, docsAtom, openWindowAtom, bringWindowToFrontAtom, editorSelectionAtom } from './appAtoms'
 import { SimplePool, type Event } from 'nostr-tools'
+import { isDefaultDocId, loadUserDocs, saveUserDocs } from './docs'
 
 export function normalizeActionName(name?: string) {
   if (!name) return undefined as unknown as string
@@ -16,6 +17,9 @@ export function normalizeActionName(name?: string) {
     set_pubkey: 'set_pubkey',
     loadprofile: 'load_profile',
     load_profile: 'load_profile',
+    install: 'install_app',
+    installapp: 'install_app',
+    install_app: 'install_app',
   }
   return aliases[n] || n
 }
@@ -24,6 +28,10 @@ export function useAction(name?: string) {
   const setUser = useSetAtom(userAtom)
   const relays = useAtomValue(relaysAtom)
   const user = useAtomValue(userAtom)
+  const setDocs = useSetAtom(docsAtom)
+  const openWindow = useSetAtom(openWindowAtom)
+  const bringToFront = useSetAtom(bringWindowToFrontAtom)
+  const setEditorSelection = useSetAtom(editorSelectionAtom)
 
   async function run(payload?: any) {
     if (!name) return
@@ -56,6 +64,28 @@ export function useAction(name?: string) {
         }
       } finally {
         pool.close(relays || [])
+      }
+      return
+    }
+    if (n === 'install_app') {
+      const naddr = typeof payload === 'string' ? payload : payload?.naddr
+      if (!naddr) {
+        console.warn('@install_app: missing naddr payload')
+        return
+      }
+      try {
+        const { installByNaddr } = await import('../services/apps')
+        const result = await installByNaddr(naddr, relays || [])
+        setDocs(prev => ({ ...prev, [result.id]: result.markdown }))
+        if (!isDefaultDocId(result.id)) {
+          const userDocs = loadUserDocs()
+          saveUserDocs({ ...userDocs, [result.id]: result.markdown })
+        }
+        setEditorSelection(result.id)
+        openWindow(result.id)
+        bringToFront(result.id)
+      } catch (e) {
+        console.warn('@install_app failed', e)
       }
       return
     }

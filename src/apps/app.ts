@@ -86,6 +86,13 @@ Version {{ app.version }} - Published by {{ app.npub }}
 
 **naddr:** \`{{ app.naddr }}\`
 
+\`\`\`button
+text: Install
+action: @install_app
+payload:
+  naddr: {{ app.naddr }}
+\`\`\`
+
 ---
 \`\`\`each.end
 \`\`\`

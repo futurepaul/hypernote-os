@@ -88,10 +88,12 @@ export function EditorPanel() {
       compiled = compileMarkdownDoc(value)
     } catch (e) {
       alert('Failed to compile document: ' + (e as any)?.message)
+      setPublishing(false)
       return
     }
     if (!compiled?.meta || typeof compiled.meta !== 'object' || !compiled.meta.name) {
       alert('Frontmatter must include a `name` before publishing.')
+      setPublishing(false)
       return
     }
     setPublishing(true)
