@@ -54,7 +54,14 @@ export async function installByNaddr(naddr: string, relays: string[]): Promise<{
   if (!client) throw new Error('Hypersauce client not initialized')
   const sub = client.runQueryDocumentLive(metaDoc as any, { user: {} })
   return await new Promise((resolve, reject) => {
-    const s = sub.subscribe({
+    let subscription: { unsubscribe(): void } | null = null
+    const cleanup = () => {
+      if (subscription) {
+        try { subscription.unsubscribe() } catch {}
+        subscription = null
+      }
+    }
+    subscription = sub.subscribe({
       next: (map: Map<string, any>) => {
         try {
           const obj = map.get('$app') || {}
@@ -62,11 +69,11 @@ export async function installByNaddr(naddr: string, relays: string[]): Promise<{
           const ast = obj.ast || []
           const md = decompile({ meta, ast } as any)
           const id = String(meta?.name ? slugify(meta.name) : identifier)
-          s.unsubscribe()
+          cleanup()
           resolve({ id, markdown: md, meta, ast })
-        } catch (e) { s.unsubscribe(); reject(e) }
+        } catch (e) { cleanup(); reject(e) }
       },
-      error: (e: any) => { try { s.unsubscribe() } catch {}; reject(e) },
+      error: (e: any) => { cleanup(); reject(e) },
     })
   })
 }
