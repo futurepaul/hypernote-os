@@ -362,8 +362,15 @@ function enhanceLoopItem(raw: any): any {
 export function AppView({ id }: { id: string }) {
   // Select only the doc text for this window to avoid global re-renders
   const doc = useAtomValue(docAtom(id)) || "";
-  const compiled = useMemo(() => compileMarkdownDoc(doc), [doc]);
-  const nodes = useMemo(() => compiled.ast as Node[], [compiled]);
+  const { compiled, error: compileError } = useMemo(() => {
+    try {
+      return { compiled: compileMarkdownDoc(doc), error: null as Error | null };
+    } catch (err) {
+      console.warn(`[Compile] ${id} failed`, err);
+      return { compiled: null, error: err instanceof Error ? err : new Error(String(err)) };
+    }
+  }, [doc]);
+  const nodes = useMemo(() => (compiled?.ast as Node[]) || [], [compiled]);
 
   // Detect if this document references time.now; if not, don't subscribe to time updates
   const usesTime = useMemo(() => /{{\s*time\.now\s*}}/.test(doc), [doc]);
@@ -412,6 +419,7 @@ export function AppView({ id }: { id: string }) {
   // Start/stop queries for this app when meta or pubkey changes
   const relays = useAtomValue(relaysAtom)
   useEffect(() => {
+    if (!compiled || compileError) return;
     queryRuntime.start({
       windowId: id,
       meta: compiled.meta,
@@ -420,10 +428,25 @@ export function AppView({ id }: { id: string }) {
       onScalars: () => {},
     }).catch(e => console.warn('[Hypersauce] start failed', e))
     return () => queryRuntime.stop(id)
-  }, [id, compiled.meta, globals.user.pubkey, relays])
+  }, [id, compiled, compileError, globals.user.pubkey, relays])
 
   const EMPTY: Record<string, any> = useMemo(() => ({}), []);
   const queriesForWindow = mergedScalars ?? EMPTY;
+
+  if (compileError) {
+    return (
+      <div className="p-4 text-sm text-red-800 bg-red-50 border border-red-200 rounded">
+        <p className="font-semibold">Failed to render “{id}”.</p>
+        <p className="mt-2">{compileError.message}</p>
+        <p className="mt-2 text-xs text-red-600">Remove raw HTML from the document before publishing.</p>
+      </div>
+    );
+  }
+
+  if (!compiled) {
+    return <div className="p-4 text-sm text-red-800 bg-red-50 border border-red-200 rounded">Document unavailable.</div>;
+  }
+
   return <RenderNodes nodes={nodes} globals={globals} windowId={id} queries={queriesForWindow} debug={debug} />;
 }
 
