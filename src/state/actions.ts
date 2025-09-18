@@ -68,7 +68,7 @@ export function useAction(name?: string) {
       return
     }
     if (n === 'install_app') {
-      const naddr = typeof payload === 'string' ? payload : payload?.naddr
+      const naddr = normalizeNaddrPayload(payload)
       if (!naddr) {
         console.warn('@install_app: missing naddr payload')
         return
@@ -93,4 +93,14 @@ export function useAction(name?: string) {
   }
 
   return run
+}
+
+function normalizeNaddrPayload(payload: any): string | null {
+  if (!payload) return null
+  if (typeof payload === 'string') return payload.trim()
+  if (typeof payload === 'object') {
+    if (typeof payload.naddr === 'string') return payload.naddr.trim()
+    if (typeof payload.value === 'string') return payload.value.trim()
+  }
+  return null
 }
