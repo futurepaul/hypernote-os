@@ -88,9 +88,9 @@ Version {{ app.version }} - Published by {{ app.npub }}
 
 \`\`\`button
 text: Install
-action: @install_app
+action: "@install_app"
 payload:
-  naddr: {{ app.naddr }}
+  naddr: "{{ app.naddr }}"
 \`\`\`
 
 ---
