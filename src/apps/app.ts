@@ -69,22 +69,38 @@ icon: folder.png
   "#t": ["hypernote-application"]
   limit: 20
   sort: created_at:desc
+"$profile":
+  args: [pubkey]
+  query:
+    kinds: [0]
+    authors: [$pubkey]
+    limit: 1
+  pipe:
+    - first
+"$apps_enriched":
+  from: $apps
+  pipe:
+    - enrich:
+        with: $profile
+        args:
+          pubkey: $item.pubkey
+        label: profile
 ---
 # Hypernote App Store
 
 {{ $apps.length }} published apps tagged hypernote 1.2.0.
 
 \`\`\`each
-from: $apps
+from: $apps_enriched
 as: app
 \`\`\`
+![avatar]({{ app.publisherImage }})
+
 ### {{ app.name }}
 
-Version {{ app.version }} - Published by {{ app.npub }}
+Version {{ app.version }} • {{ app.publisherName }}
 
 {{ app.description }}
-
-**naddr:** \`{{ app.naddr }}\`
 
 \`\`\`button
 text: Install

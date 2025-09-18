@@ -89,7 +89,9 @@ export const windowPosAtom = atomFamily((id: string) => atom(
   (get, set, pos: { x: number; y: number }) => {
     const layout = get(windowLayoutAtom)
     const prev = layout[id] || { x: 100, y: 100, z: 1000 }
-    set(windowLayoutAtom, { ...layout, [id]: { ...prev, x: pos.x, y: pos.y } })
+    const nextX = Math.max(0, pos.x)
+    const nextY = Math.max(0, pos.y)
+    set(windowLayoutAtom, { ...layout, [id]: { ...prev, x: nextX, y: nextY } })
   }
 ))
 

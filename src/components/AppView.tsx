@@ -22,7 +22,9 @@ function interpolateText(text: string, globals: any, queries: Record<string, any
 // parsing/compilation is handled by compiler.ts
 
 function MarkdownNode({ n, globals, queries }: { n: Node; globals: any; queries: Record<string, any> }) {
-  const deps = useMemo(() => {
+const IMAGE_SIZE = 48;
+
+const deps = useMemo(() => {
     const refs = n.refs || []
     const q: Record<string, any> = (queries && typeof queries === 'object') ? queries : {}
     const getPath = (obj: any, path: string) => path.split('.').reduce((acc, k) => (acc && typeof acc === 'object') ? acc[k] : undefined, obj)
@@ -45,7 +47,8 @@ function MarkdownNode({ n, globals, queries }: { n: Node; globals: any; queries:
     const hast = toHast(cloned)
     const raw = htmlToText(hast) as string
     const interpolated = interpolateText(raw, globals, queries)
-    return resolveImgDollarSrc(interpolated, queries || {})
+    const resolved = resolveImgDollarSrc(interpolated, queries || {})
+    return normalizeImageTags(resolved, IMAGE_SIZE)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [n.id, ...deps])
 
@@ -304,25 +307,68 @@ function buildPayload(spec: any, globals: any, queries: Record<string, any>) {
   return out
 }
 
+function normalizeImageTags(html: string, width: number): string {
+  return html.replace(/<img\b([^>]*?)src=["']([^"']+)["']([^>]*)>/gi, (match, pre, src, post) => {
+    const newSrc = ensureImageWidthParam(src, width)
+    let tag = `<img${pre}src="${newSrc}"${post}>`
+    const attrs = `${pre}${post}`
+    if (!/\bwidth\s*=/.test(attrs)) tag = tag.replace('<img', `<img width="${width}"`)
+    if (!/\bheight\s*=/.test(attrs)) tag = tag.replace('<img', `<img height="${width}"`)
+    return tag
+  })
+}
+
+function ensureImageWidthParam(src: string, width: number): string {
+  try {
+    if (/^data:/i.test(src)) return src
+    if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(src)) return src
+    const url = new URL(src)
+    url.searchParams.set('w', String(width))
+    url.searchParams.set('width', String(width))
+    return url.toString()
+  } catch {
+    return src
+  }
+}
+
 function enhanceLoopItem(raw: any): any {
-  if (!raw || typeof raw !== 'object') return raw;
-  const out: any = Array.isArray(raw) ? raw.slice() : { ...raw };
+  if (raw == null) return raw;
+  if (Array.isArray(raw)) {
+    const [event, ...rest] = raw;
+    const base = enhanceLoopItem(event) || {};
+    base.__tuple = raw;
+    if (rest.length > 0) base._enrich = rest;
+    if (rest[0] && typeof rest[0] === 'object') {
+      base.profileEvent = rest[0];
+      const profile = parseEventContent(rest[0]);
+      if (profile) {
+        base.publisherProfile = profile;
+        const name = profile.display_name || profile.name;
+        if (name) base.publisherName = name;
+        if (profile.picture) base.publisherImage = profile.picture;
+      }
+    }
+    if (!base.publisherName) base.publisherName = base.npub || abbreviate(base.pubkey);
+    if (!base.publisherImage) base.publisherImage = createAvatarFallback(base.pubkey || base.npub);
+    base.publisherShort = abbreviate(base.npub || base.pubkey);
+    return base;
+  }
+  if (typeof raw !== 'object') return raw;
+  const out: any = { ...raw };
   out.event = raw;
 
   if (typeof raw.content === 'string') {
-    try {
-      const parsed = JSON.parse(raw.content);
+    const parsed = parseEventContent(raw);
+    if (parsed) {
       out.content_json = parsed;
-      if (parsed && typeof parsed === 'object') {
-        if (parsed.meta && typeof parsed.meta === 'object') {
-          out.meta = parsed.meta;
-          if (parsed.meta.name && !out.name) out.name = parsed.meta.name;
-          if (parsed.meta.description && !out.description) out.description = parsed.meta.description;
-        }
-        if (parsed.version && !out.version) out.version = parsed.version;
-        if (parsed.ast && !out.ast) out.ast = parsed.ast;
+      if (parsed.meta && typeof parsed.meta === 'object') {
+        out.meta = parsed.meta;
+        if (parsed.meta.name && !out.name) out.name = parsed.meta.name;
+        if (parsed.meta.description && !out.description) out.description = parsed.meta.description;
       }
-    } catch {}
+      if (parsed.version && !out.version) out.version = parsed.version;
+      if (parsed.ast && !out.ast) out.ast = parsed.ast;
+    }
   }
 
   const tagsArray: any[] = Array.isArray(raw.tags) ? raw.tags : [];
@@ -348,6 +394,7 @@ function enhanceLoopItem(raw: any): any {
 
   if (typeof raw.pubkey === 'string') {
     try { out.npub = nip19.npubEncode(raw.pubkey); } catch {}
+    out.pubkey = raw.pubkey;
     if (typeof out.identifier === 'string') {
       try {
         out.naddr = nip19.naddrEncode({ kind: typeof raw.kind === 'number' ? raw.kind : 32616, pubkey: raw.pubkey, identifier: out.identifier });
@@ -355,8 +402,33 @@ function enhanceLoopItem(raw: any): any {
     }
   }
 
+  if (!out.publisherName) out.publisherName = out.npub || abbreviate(out.pubkey);
+  if (!out.publisherImage) out.publisherImage = createAvatarFallback(out.pubkey || out.npub);
+  out.publisherShort = abbreviate(out.npub || out.pubkey);
+
   if (typeof raw.created_at === 'number') out.created_at = raw.created_at;
   return out;
+}
+
+function parseEventContent(event: any): any | null {
+  try {
+    if (event && typeof event.content === 'string') {
+      return JSON.parse(event.content);
+    }
+  } catch {}
+  return null;
+}
+
+function abbreviate(value?: string | null, leading = 8): string {
+  if (!value) return '';
+  const str = String(value);
+  if (str.length <= leading + 2) return str;
+  return `${str.slice(0, leading)}…${str.slice(-4)}`;
+}
+
+function createAvatarFallback(key?: string | null): string {
+  const seed = key ? encodeURIComponent(String(key)) : 'hypernote';
+  return `https://avatar.vercel.sh/${seed}?size=48`;
 }
 
 export function AppView({ id }: { id: string }) {
