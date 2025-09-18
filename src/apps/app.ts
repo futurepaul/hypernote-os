@@ -94,7 +94,7 @@ icon: folder.png
 from: $apps_enriched
 as: app
 \`\`\`
-![avatar]({{ app.publisherImage }})
+{{ app.publisherImageMarkdown }}
 
 ### {{ app.name }}
 

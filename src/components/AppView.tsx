@@ -14,6 +14,7 @@ import { slugify } from '../services/apps'
 
 type Node = UiNode;
 
+const IMAGE_SIZE = 48;
 
 function interpolateText(text: string, globals: any, queries: Record<string, any>) {
   return interp(text, { globals, queries })
@@ -22,9 +23,7 @@ function interpolateText(text: string, globals: any, queries: Record<string, any
 // parsing/compilation is handled by compiler.ts
 
 function MarkdownNode({ n, globals, queries }: { n: Node; globals: any; queries: Record<string, any> }) {
-const IMAGE_SIZE = 48;
-
-const deps = useMemo(() => {
+  const deps = useMemo(() => {
     const refs = n.refs || []
     const q: Record<string, any> = (queries && typeof queries === 'object') ? queries : {}
     const getPath = (obj: any, path: string) => path.split('.').reduce((acc, k) => (acc && typeof acc === 'object') ? acc[k] : undefined, obj)
@@ -345,12 +344,13 @@ function enhanceLoopItem(raw: any): any {
         base.publisherProfile = profile;
         const name = profile.display_name || profile.name;
         if (name) base.publisherName = name;
-        if (profile.picture) base.publisherImage = profile.picture;
+        const pic = profile.picture || profile.image;
+        if (pic) base.publisherImage = pic;
       }
     }
-    if (!base.publisherName) base.publisherName = base.npub || abbreviate(base.pubkey);
-    if (!base.publisherImage) base.publisherImage = createAvatarFallback(base.pubkey || base.npub);
     base.publisherShort = abbreviate(base.npub || base.pubkey);
+    if (!base.publisherName) base.publisherName = base.publisherShort;
+    base.publisherImageMarkdown = buildImageMarkdown(base.publisherImage, IMAGE_SIZE);
     return base;
   }
   if (typeof raw !== 'object') return raw;
@@ -402,9 +402,13 @@ function enhanceLoopItem(raw: any): any {
     }
   }
 
-  if (!out.publisherName) out.publisherName = out.npub || abbreviate(out.pubkey);
-  if (!out.publisherImage) out.publisherImage = createAvatarFallback(out.pubkey || out.npub);
   out.publisherShort = abbreviate(out.npub || out.pubkey);
+  if (!out.publisherName) out.publisherName = out.publisherShort;
+  if (!out.publisherImage && out.publisherProfile) {
+    const pic = out.publisherProfile.picture || out.publisherProfile.image;
+    if (pic) out.publisherImage = pic;
+  }
+  out.publisherImageMarkdown = buildImageMarkdown(out.publisherImage, IMAGE_SIZE);
 
   if (typeof raw.created_at === 'number') out.created_at = raw.created_at;
   return out;
@@ -426,9 +430,10 @@ function abbreviate(value?: string | null, leading = 8): string {
   return `${str.slice(0, leading)}…${str.slice(-4)}`;
 }
 
-function createAvatarFallback(key?: string | null): string {
-  const seed = key ? encodeURIComponent(String(key)) : 'hypernote';
-  return `https://avatar.vercel.sh/${seed}?size=48`;
+function buildImageMarkdown(url: string | undefined, width: number): string {
+  if (!url) return '';
+  const sized = ensureImageWidthParam(url, width);
+  return `![avatar](${sized})`;
 }
 
 export function AppView({ id }: { id: string }) {
