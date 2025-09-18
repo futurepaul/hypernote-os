@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "bun-plugin-tailwind": "^0.0.15",
-    "hypersauce": "file:../hypersauce",
+    "hypersauce": "git+https://github.com/futurepaul/hypersauce.git",
     "nostr-tools": "^2.7.2",
     "overtype": "^1.2.6",
     "react": "^19",

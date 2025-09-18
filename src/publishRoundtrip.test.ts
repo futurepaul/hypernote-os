@@ -3,7 +3,7 @@ import { compileMarkdownDoc } from "./compiler";
 import { publishApp, installByNaddr } from "./services/apps";
 import { getDefaultStore } from "jotai";
 import { hypersauceClientAtom } from "./state/hypersauce";
-import { HypersauceClient } from "../../hypersauce/client.ts";
+import { HypersauceClient } from "hypersauce";
 import { finalizeEvent, getPublicKey } from "nostr-tools";
 
 function hexToBytes(hex: string): Uint8Array {

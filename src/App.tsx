@@ -33,8 +33,8 @@ export function App() {
     let alive = true
     ;(async () => {
       try {
-        const mod: any = await import('../../hypersauce/client.ts')
-        const HS = mod?.HypersauceClient
+        const mod: any = await import('hypersauce')
+        const HS = mod?.HypersauceClient ?? mod?.default?.HypersauceClient
         if (!HS) throw new Error('Hypersauce export missing')
         const client = new HS({ relays })
         if (!alive) return
