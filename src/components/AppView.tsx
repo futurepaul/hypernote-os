@@ -93,6 +93,10 @@ export function AppView({ id }: { id: string }) {
       ctx.user = userContext
       ctx.$user = userContext
     }
+    if (forms && Object.keys(forms || {}).length > 0) {
+      ctx.form = forms
+      ctx.$form = forms
+    }
     queryRuntime.start({
       windowId: id,
       meta: compiled.meta,

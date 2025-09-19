@@ -49,38 +49,6 @@ action: @receive
 \`\`\`hstack.end
 \`\`\`
 `,
-  clock: `---
-name: Clock
-icon: clock.png
----
-The time is {{ $time.now }}.
-`,
-  poast: `---
-name: Poast
-icon: mail.png
-actions:
-  "@post_note":
-    kind: 1
-    content: "{{ $form.editor }}"
-    tags:
-      - ["client", "hypernote-client"]
-    after:
-      clear: ["editor"]
----
-Compose a note and share it on Nostr.
-
-> TODO: Publish Poast to Nostr and remove from defaults once it's widely installed.
-
-\`\`\`markdown-editor
-id: $editor
-placeholder: What's on your mind?
-\`\`\`
-
-\`\`\`button
-text: Poast
-action: "@post_note"
-\`\`\`
-`,
   apps: `---
 name: Apps
 icon: folder.png

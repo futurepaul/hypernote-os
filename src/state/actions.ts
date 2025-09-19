@@ -136,15 +136,18 @@ export function useAction(name?: string, windowId?: string) {
       }
       const templateClone = deepClone(docAction.template)
       const interpolatedTemplate = interpolateActionValue(templateClone, scope)
+      const pipeSpec = Array.isArray((interpolatedTemplate as any).pipe) ? (interpolatedTemplate as any).pipe : undefined
+      if (pipeSpec) delete (interpolatedTemplate as any).pipe
       const payloadInterpolated = payload != null ? interpolateActionValue(deepClone(payload), scope) : undefined
       const finalEvent: Record<string, any> = {
         ...interpolatedTemplate,
         ...(payloadInterpolated || {}),
       }
-      coerceEventShape(finalEvent)
+      const pipedEvent = pipeSpec && pipeSpec.length ? applyActionPipe(finalEvent, pipeSpec) : finalEvent
+      coerceEventShape(pipedEvent)
 
       try {
-        const result = await client.publishEvent(finalEvent)
+        const result = await client.publishEvent(pipedEvent)
         if (ctx?.windowId) {
           const keys = new Set(docAction.formKeys)
           if (payloadInterpolated !== undefined) collectFormKeysInto(payloadInterpolated, keys)
@@ -322,4 +325,17 @@ function normalizeNaddrPayload(payload: any): string | null {
     if (typeof payload.value === 'string') return payload.value.trim()
   }
   return null
+}
+
+function applyActionPipe(event: any, pipeSpec: any[]) {
+  if (!pipeSpec || pipeSpec.length === 0) return event
+  try {
+    const ops = toPipeOps(pipeSpec)
+    const result = actionPipeEngine.execute(event, ops as any)
+    if (Array.isArray(result)) return result[result.length - 1] ?? event
+    return result
+  } catch (err) {
+    console.warn('[actions] pipe execution failed', err)
+    return event
+  }
 }
