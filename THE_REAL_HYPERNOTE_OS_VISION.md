@@ -71,7 +71,7 @@ Status: PARTIAL. Generic `login()` + `publishEvent()` added to Hypersauce; `publ
 - All presentation shaping (slugs, avatar fallbacks, display labels) happens in YAML pipes (`map`, `default`, `coalesce`, `project`). If an app needs a helper, it lives in the query layer, not the renderer.
 - Action buttons keep working via generic payload interpolation; we remove payload munging and publisher helpers from `AppView.tsx`.
 - Deliverables:
-  1. Strip `AppView.tsx` back to: compile markdown → render nodes → evaluate interpolations. Delete publisher/slug/image helpers and any tuple mutation logic.
+  1. Strip `AppView.tsx` back to: compile markdown → render nodes → evaluate interpolations. Delete publisher/slug/image helpers and any tuple mutation logic. ✅ `AppView.tsx` now delegates rendering to `components/nodes.tsx`.
   2. Update `queryRuntime` to stop injecting fallback data; it simply returns what Hypersauce produced (events, tuples, maps).
   3. Rewrite bundled apps (App Store, etc.) so queries compute `display_label`, `avatar_url`, etc., and markdown references tuple indices (`{{ app.0.meta.name }}`, `{{ app.1.picture }}`) or pipe-produced fields (`{{ app.profile.display_label }}` when the query writes that).
   4. Adjust tests to assert that compile/decompile + render works with tuple access, and add regression coverage for rejecting html while ensuring tuple interpolation passes through untouched.
@@ -381,10 +381,9 @@ ANSWER: default relays are fine but circle back on this when we get close to pro
 2) Phase 1: switch “Add App” to accept `naddr`; create `installedAppsAtom`; install and cache fetched AST.
 3) Phase 2: expose `publishApp` in Hypersauce; add Editor “Publish” button; store returned `naddr`.
 4) Phase 3: extend frontmatter `actions:`; wire action publishing via Hypersauce. **DONE** — Poast ships as the first writer app.
-5) Refactor renderer: extract node components from `AppView.tsx` into a `nodes.tsx` module so the view stays thin and reusable.
-6) Phase 4: implement element embedding by `naddr` with optional props; basic cache.
-7) Phase 5: persist `installedApps` list to Nostr; merge with local on boot.
-8) Phase 6: image upload helper; surface in editor.
-9) Phase 7: tighten logs, add tests, document schema.
+5) Phase 4: implement element embedding by `naddr` with optional props; basic cache.
+6) Phase 5: persist `installedApps` list to Nostr; merge with local on boot.
+7) Phase 6: image upload helper; surface in editor.
+8) Phase 7: tighten logs, add tests, document schema.
 
 All along: keep code tiny, push Nostr concerns into Hypersauce, and iterate behind feature flags where helpful.
