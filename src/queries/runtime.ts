@@ -18,11 +18,33 @@ type StartArgs = {
 
 const PENDING_MARKER = Symbol('pending');
 
+type PendingMap = Record<string, boolean>
+
 class QueryRuntime {
   private client: any | null = null;
   private relays: string[] = [];
   private subs = new Map<string, { unsubscribe(): void }>();
   private warnedMissing = false;
+  private pendingTimers = new Map<string, Map<string, ReturnType<typeof setTimeout>>>();
+
+  private clearPending(windowId: string, key: string) {
+    const store = getDefaultStore()
+    const atom = windowScalarsAtom(windowId)
+    const prev = store.get(atom) || {}
+    const pending: PendingMap = { ...(prev.__pending || {}) }
+    if (!pending[key]) return
+    pending[key] = false
+    const next: Record<string, any> = { __pending: pending }
+    if (prev[key] === PENDING_MARKER) next[key] = []
+    const merged = mergeScalars(prev, next)
+    if (merged !== prev) store.set(atom, merged)
+    const timers = this.pendingTimers.get(windowId)
+    if (timers?.has(key)) {
+      clearTimeout(timers.get(key)!)
+      timers.delete(key)
+      if (timers.size === 0) this.pendingTimers.delete(windowId)
+    }
+  }
 
   async ensureClient(relays: string[]): Promise<boolean> {
     const store = getDefaultStore()
@@ -49,6 +71,11 @@ class QueryRuntime {
     if (sub) {
       try { sub.unsubscribe(); } catch {}
       this.subs.delete(windowId);
+    }
+    const timers = this.pendingTimers.get(windowId)
+    if (timers) {
+      for (const timer of timers.values()) clearTimeout(timer)
+      this.pendingTimers.delete(windowId)
     }
   }
 
@@ -84,20 +111,54 @@ class QueryRuntime {
           if (changed) store.set(atom, next)
         }
       } catch {}
+    const store = getDefaultStore()
+    const atom = windowScalarsAtom(windowId)
+    const prev = store.get(atom) || {}
+    const pending: PendingMap = { ...(prev.__pending || {}) }
+    const timers = this.pendingTimers.get(windowId) ?? new Map<string, ReturnType<typeof setTimeout>>()
+    const sentinelUpdate: Record<string, any> = {}
+    for (const key of queryKeys) {
+      pending[key] = true
+      sentinelUpdate[key] = PENDING_MARKER
+      const existingTimer = timers.get(key)
+      if (existingTimer) clearTimeout(existingTimer)
+      const timer = setTimeout(() => {
+        this.clearPending(windowId, key)
+      }, 1500)
+      timers.set(key, timer)
+    }
+    this.pendingTimers.set(windowId, timers)
+    const nextSeed = { ...prev, __pending: pending, ...sentinelUpdate }
+    const mergedSeed = mergeScalars(prev, nextSeed)
+    if (mergedSeed !== prev) store.set(atom, mergedSeed)
 
       const sub = this.client
         .runQueryDocumentLive(resolvedDoc, context)
         .subscribe({
           next: (resultMap: Map<string, any>) => {
             const scalars: Record<string, any> = {};
-            for (const [qid, value] of resultMap) scalars[qid] = toRenderable(value);
-            // Push into per-window Jotai atom to avoid global re-renders
+            const store = getDefaultStore();
+            const atom = windowScalarsAtom(windowId);
+            const prevSnapshot = store.get(atom) || {};
+            const pendingSnapshot: PendingMap = { ...(prevSnapshot.__pending || {}) };
+            const windowTimers = this.pendingTimers.get(windowId);
+            for (const [qid, value] of resultMap) {
+              const rendered = toRenderable(value);
+              if (pendingSnapshot[qid] && prevSnapshot[qid] === PENDING_MARKER && Array.isArray(rendered) && rendered.length === 0) {
+                continue;
+              }
+              pendingSnapshot[qid] = false;
+              if (windowTimers?.has(qid)) {
+                clearTimeout(windowTimers.get(qid)!);
+                windowTimers.delete(qid);
+              }
+              scalars[qid] = rendered;
+            }
+            if (windowTimers && windowTimers.size === 0) this.pendingTimers.delete(windowId);
+            const next = { ...scalars, __pending: pendingSnapshot };
             try {
-              const store = getDefaultStore();
-              const atom = windowScalarsAtom(windowId);
-              const prev = store.get(atom);
-              const merged = mergeScalars(prev, scalars);
-              if (merged !== prev) store.set(atom, merged);
+              const merged = mergeScalars(prevSnapshot, next);
+              if (merged !== prevSnapshot) store.set(atom, merged);
             } catch {}
             onScalars(scalars);
           },
