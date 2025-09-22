@@ -26,6 +26,7 @@ import save from '../assets/icons/save.png'
 import search from '../assets/icons/search.png'
 import settings from '../assets/icons/settings.png'
 import todo from '../assets/icons/todo.png'
+import wallet from '../assets/icons/wallet.png'
 
 export const iconRegistry: Record<string, string> = {
   'ball.png': ball,
@@ -54,4 +55,5 @@ export const iconRegistry: Record<string, string> = {
   'search.png': search,
   'settings.png': settings,
   'todo.png': todo,
+  'wallet.png': wallet,
 }
