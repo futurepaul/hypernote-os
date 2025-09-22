@@ -1,8 +1,8 @@
-import { useEffect, useRef, type PropsWithChildren } from "react";
+import { useEffect, useRef, type PropsWithChildren, type CSSProperties } from "react";
 import { useAtom, useSetAtom, useAtomValue } from 'jotai'
 import { windowPosAtom, windowZAtom, bringWindowToFrontAtom, activeWindowAtom } from '../state/appAtoms'
 
-export function DraggableWindow({ id, title, children, contentClassName, onClose, onEdit }: PropsWithChildren<{ id: string; title?: string; contentClassName?: string; onClose?: () => void; onEdit?: () => void }>) {
+export function DraggableWindow({ id, title, children, contentClassName, onClose, onEdit, style }: PropsWithChildren<{ id: string; title?: string; contentClassName?: string; onClose?: () => void; onEdit?: () => void; style?: CSSProperties }>) {
   const dragRef = useRef<HTMLDivElement | null>(null);
   const isDragging = useRef(false);
   const offset = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -53,7 +53,7 @@ export function DraggableWindow({ id, title, children, contentClassName, onClose
   return (
     <div
       className={`absolute select-none`}
-      style={{ left: pos.x, top: pos.y, zIndex: z, maxWidth: '65vw' }}
+      style={{ left: pos.x, top: pos.y, zIndex: z, maxWidth: '65vw', ...(style || {}) }}
       ref={dragRef}
       onMouseDown={() => bringToFront(id)}
     >

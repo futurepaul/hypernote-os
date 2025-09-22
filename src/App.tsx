@@ -72,12 +72,14 @@ export function App() {
           : id === 'apps'
             ? "bg-[var(--win-bg)] p-3 text-sm text-gray-900 min-w-[200px]"
             : undefined
+        const style = id === 'apps' ? { minWidth: '200px' } : undefined
         return (
           <DraggableWindow
             key={id}
             id={id}
             title={parseFrontmatterName(doc) || id}
             contentClassName={contentClass}
+            style={style}
             onClose={isClosable ? () => closeWindow(id) : undefined}
             onEdit={isEditable ? () => handleEdit(id) : undefined}
           >
