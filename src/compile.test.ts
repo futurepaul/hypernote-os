@@ -7,7 +7,7 @@ describe("compiler", () => {
   test("wallet compiles to AST with hstack and buttons", async () => {
     const md = defaultApps.wallet;
     const { ast, meta } = compileMarkdownDoc(md);
-    expect(meta.name).toBe("Wallet");
+    expect(meta.hypernote?.name).toBe("Wallet");
     expect(Array.isArray(ast)).toBe(true);
 
     // Expect first markdown node to include the price text
@@ -24,15 +24,14 @@ describe("compiler", () => {
     expect(labels).toContain("Receive");
   });
 
-  test("profile compiles input and button with yaml payloads", async () => {
+  test("profile compiles modern queries block", async () => {
     const md = defaultApps.profile;
     const { ast, meta } = compileMarkdownDoc(md);
-    expect(meta.name).toBe("Profile");
-    const input = ast.find(n => n.type === "input");
-    const button = ast.find(n => n.type === "button");
-    expect(input?.data?.text).toContain("nsec or npub");
-    expect(button?.data?.text).toBe("Load Profile");
-    expect(button?.data?.action).toBe("@load_profile");
+    expect(meta.hypernote?.name).toBe("Profile");
+    const inputs = ast.filter(n => n.type === "input");
+    const buttons = ast.filter(n => n.type === "button");
+    expect(inputs.length).toBe(0);
+    expect(buttons.length).toBe(0);
   });
   test("rejects raw html", () => {
     const bad = `---\nname: Bad\n---\n<div>html</div>`;
@@ -40,11 +39,11 @@ describe("compiler", () => {
   });
 
   test("preserves yaml arrays in frontmatter", () => {
-    const md = `---\nname: Test\n"$items":\n  authors: [$user.pubkey]\n---\nhi\n`;
+    const md = `---\nhypernote:\n  name: Test\nqueries:\n  items:\n    authors:\n      - user.pubkey\n---\nhi\n`;
     const compiled = compileMarkdownDoc(md);
-    expect(Array.isArray(compiled.meta["$items"]?.authors)).toBe(true);
+    expect(Array.isArray(compiled.meta.queries?.items?.authors)).toBe(true);
     const roundtrip = compileMarkdownDoc(decompile(compiled));
-    expect(roundtrip.meta["$items"].authors).toEqual(['$user.pubkey']);
+    expect(roundtrip.meta.queries?.items?.authors).toEqual(['user.pubkey']);
   });
 
   test("app store markdown normalizes inline image references", () => {
