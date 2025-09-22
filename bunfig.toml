@@ -1,7 +1,7 @@
 
 [serve.static]
-plugins = ["bun-plugin-tailwind"]
+plugins = ["bun-plugin-tailwind", "./plugins/markdownAsText.ts"]
 env = "BUN_PUBLIC_*"
 
 # Preload runtime plugins so imports of .md resolve to strings in dev.
-preload = ["./plugins/md-runtime.ts"]
+preload = ["./plugins/markdownAsText.ts"]
