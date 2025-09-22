@@ -15,7 +15,26 @@ function sortObject<T extends Record<string, any>>(obj: T): T {
 }
 
 function encodeFrontmatter(meta: Record<string, any>): string {
-  const sorted = sortObject(meta || {})
+  const {
+    hypernote = {},
+    queries = {},
+    actions = {},
+    components = {},
+    events = {},
+    ...rest
+  } = meta || {}
+
+  const sorted: Record<string, any> = {}
+  if (Object.keys(hypernote).length) sorted.hypernote = sortObject(hypernote)
+  if (Object.keys(queries).length) sorted.queries = sortObject(queries)
+  if (Object.keys(actions).length) sorted.actions = sortObject(actions)
+  if (Object.keys(components).length) sorted.components = sortObject(components)
+  if (Object.keys(events).length) sorted.events = sortObject(events)
+  for (const [key, value] of Object.entries(rest)) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) sorted[key] = sortObject(value)
+    else sorted[key] = value
+  }
+
   let y = YAML.stringify(sorted)
   if (!y.endsWith('\n')) y += '\n'
   return `---\n${y}---\n`

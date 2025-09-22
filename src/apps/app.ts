@@ -1,15 +1,17 @@
 export const defaultApps: Record<string, string> = {
   profile: `---
-name: Profile
-"$profile":
-  kinds: [0]
-  authors: [$user.pubkey]
-  limit: 1
-  pipe:
-    - first
-    - json: { from: content, as: parsed }
-    - get: parsed
-icon: contact.png
+hypernote:
+  name: Profile
+  icon: contact.png
+queries:
+  profile:
+    kinds: [0]
+    authors: [$user.pubkey]
+    limit: 1
+    pipe:
+      - first
+      - json: { from: content, as: parsed }
+      - get: parsed
 ---
 Paste an npub to view a profile.
 
@@ -28,8 +30,9 @@ action: @load_profile
 \`\`\`
 `,
   wallet: `---
-name: Wallet
-icon: settings.png
+hypernote:
+  name: Wallet
+  icon: settings.png
 ---
 # $60
 
@@ -50,39 +53,42 @@ action: @receive
 \`\`\`
 `,
   apps: `---
-name: Apps
-icon: folder.png
+hypernote:
+  name: Apps
+  icon: folder.png
 ---
 Use the app switcher to activate windows.
 `,
   'app-store': `---
-name: App Store
-icon: library.png
-"$apps":
-  kinds: [32616]
-  "#t": ["hypernote-application"]
-  limit: 20
-  sort: created_at:desc
-  pipe:
-    - json: { from: content, as: parsed }
-"$profile":
-  args: [pubkey]
-  query:
-    kinds: [0]
-    authors: [$pubkey]
-    limit: 1
-  pipe:
-    - first
-    - json: { from: content, as: parsed }
-    - get: parsed
-"$apps_enriched":
-  from: $apps
-  pipe:
-    - enrich:
-        with: $profile
-        args:
-          pubkey: $item.pubkey
-        label: profile
+hypernote:
+  name: App Store
+  icon: library.png
+queries:
+  apps:
+    kinds: [32616]
+    "#t": ["hypernote-application"]
+    limit: 20
+    sort: created_at:desc
+    pipe:
+      - json: { from: content, as: parsed }
+  profile:
+    args: [pubkey]
+    query:
+      kinds: [0]
+      authors: [$pubkey]
+      limit: 1
+    pipe:
+      - first
+      - json: { from: content, as: parsed }
+      - get: parsed
+  apps_enriched:
+    from: $apps
+    pipe:
+      - enrich:
+          with: $profile
+          args:
+            pubkey: $item.pubkey
+          label: profile
 ---
 # Hypernote App Store
 
@@ -114,14 +120,16 @@ payload:
 If no apps appear yet, publish from the editor to populate the store.
 `,
   editor: `---
-name: Editor
-icon: edit.png
+hypernote:
+  name: Editor
+  icon: edit.png
 ---
 Edit app documents on the right; click Save to persist.
 `,
   system: `---
-name: System Menu
-icon: settings.png
+hypernote:
+  name: System Menu
+  icon: settings.png
 ---
 System-wide actions.
 `,

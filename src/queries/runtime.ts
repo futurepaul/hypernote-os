@@ -5,12 +5,13 @@ import { getDefaultStore } from 'jotai'
 import { nip19 } from 'nostr-tools'
 import { hypersauceClientAtom } from '../state/hypersauce'
 import { mergeScalars, windowScalarsAtom } from '../state/queriesAtoms'
+import type { HypernoteMeta } from '../compiler'
 
 type Unsub = () => void;
 
 type StartArgs = {
   windowId: string;
-  meta: Record<string, any>;
+  meta: HypernoteMeta | Record<string, any>;
   relays: string[];
   context: any; // { user: { pubkey } }
   onScalars: (scalars: Record<string, any>) => void;
@@ -82,15 +83,30 @@ class QueryRuntime {
   async start({ windowId, meta, relays, context, onScalars }: StartArgs) {
     try {
       this.stop(windowId);
-      // Extract $queries from meta
-      const doc: any = { type: 'hypernote', name: String(windowId), ...meta };
-      const queryKeys = Object.keys(meta || {}).filter((k) => k.startsWith('$'))
-      const hasQueries = queryKeys.length > 0;
+      // Extract queries from meta (new namespaced form or legacy $keys)
+      const queryEntries: Array<[string, any]> = []
+      if (meta && typeof meta.queries === 'object') {
+        for (const [name, def] of Object.entries(meta.queries as Record<string, any>)) {
+          queryEntries.push([`$${name}`, def])
+        }
+      } else {
+        for (const [key, def] of Object.entries(meta || {})) {
+          if (key.startsWith('$')) queryEntries.push([key, def])
+        }
+      }
+      const queryKeys = queryEntries.map(([key]) => key)
+      const hasQueries = queryEntries.length > 0;
       if (!hasQueries) return; // nothing to start
       const ok = await this.ensureClient(relays);
       if (!ok) return; // quietly no-op if hypersauce not available
       // Gate on pubkey: if missing, do not start
       if (!context?.user?.pubkey) return;
+
+      const doc: any = { type: 'hypernote', name: String(windowId) }
+      if (meta?.hypernote && typeof meta.hypernote === 'object') doc.hypernote = meta.hypernote
+      for (const [prefixedKey, def] of queryEntries) {
+        doc[prefixedKey] = def
+      }
 
       const resolvedDoc = resolveQueryDoc(doc, context)
 
@@ -111,26 +127,26 @@ class QueryRuntime {
           if (changed) store.set(atom, next)
         }
       } catch {}
-    const store = getDefaultStore()
-    const atom = windowScalarsAtom(windowId)
-    const prev = store.get(atom) || {}
-    const pending: PendingMap = { ...(prev.__pending || {}) }
-    const timers = this.pendingTimers.get(windowId) ?? new Map<string, ReturnType<typeof setTimeout>>()
-    const sentinelUpdate: Record<string, any> = {}
-    for (const key of queryKeys) {
-      pending[key] = true
-      sentinelUpdate[key] = PENDING_MARKER
-      const existingTimer = timers.get(key)
-      if (existingTimer) clearTimeout(existingTimer)
-      const timer = setTimeout(() => {
-        this.clearPending(windowId, key)
-      }, 1500)
-      timers.set(key, timer)
-    }
-    this.pendingTimers.set(windowId, timers)
-    const nextSeed = { ...prev, __pending: pending, ...sentinelUpdate }
-    const mergedSeed = mergeScalars(prev, nextSeed)
-    if (mergedSeed !== prev) store.set(atom, mergedSeed)
+      const store = getDefaultStore()
+      const atom = windowScalarsAtom(windowId)
+      const prev = store.get(atom) || {}
+      const pending: PendingMap = { ...(prev.__pending || {}) }
+      const timers = this.pendingTimers.get(windowId) ?? new Map<string, ReturnType<typeof setTimeout>>()
+      const sentinelUpdate: Record<string, any> = {}
+      for (const key of queryKeys) {
+        pending[key] = true
+        sentinelUpdate[key] = PENDING_MARKER
+        const existingTimer = timers.get(key)
+        if (existingTimer) clearTimeout(existingTimer)
+        const timer = setTimeout(() => {
+          this.clearPending(windowId, key)
+        }, 1500)
+        timers.set(key, timer)
+      }
+      this.pendingTimers.set(windowId, timers)
+      const nextSeed = { ...prev, __pending: pending, ...sentinelUpdate }
+      const mergedSeed = mergeScalars(prev, nextSeed)
+      if (mergedSeed !== prev) store.set(atom, mergedSeed)
 
       const sub = this.client
         .runQueryDocumentLive(resolvedDoc, context)

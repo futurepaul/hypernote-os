@@ -13,8 +13,17 @@ export type UiNode = {
   refs?: string[]; // variable references (e.g., $profile.name, $user.pubkey, $time.now)
 };
 
+export interface HypernoteMeta {
+  hypernote?: Record<string, any>;
+  queries?: Record<string, any>;
+  actions?: Record<string, any>;
+  components?: Record<string, any>;
+  events?: Record<string, any>;
+  [key: string]: any;
+}
+
 export type CompiledDoc = {
-  meta: Record<string, any>;
+  meta: HypernoteMeta;
   ast: UiNode[];
 };
 
@@ -197,7 +206,9 @@ const flush = () => {
     }
   }
 
-  return { meta, ast: root.children || [] };
+  const normalizedMeta = normalizeMeta(meta)
+
+  return { meta: normalizedMeta, ast: root.children || [] };
 }
 
 export default compileMarkdownDoc;
@@ -379,6 +390,101 @@ function ensureBlankLineBeforeFences(source: string): string {
     out.push(line);
   }
   return out.join('\n');
+}
+
+function normalizeMeta(meta: Record<string, any> | null | undefined): HypernoteMeta {
+  const hypernote: Record<string, any> = {}
+  const queries: Record<string, any> = {}
+  const actions: Record<string, any> = {}
+  const components: Record<string, any> = {}
+  const events: Record<string, any> = {}
+  const passthrough: Record<string, any> = {}
+
+  if (meta && typeof meta.hypernote === 'object' && meta.hypernote) {
+    Object.assign(hypernote, meta.hypernote)
+  }
+
+  const mergeQueries = (record: Record<string, any> | null | undefined) => {
+    if (!record || typeof record !== 'object') return
+    for (const [rawKey, value] of Object.entries(record)) {
+      if (value === undefined) continue
+      const key = String(rawKey || '').trim()
+      if (!key) continue
+      const normalizedKey = key.startsWith('$') ? key.slice(1) : key
+      queries[normalizedKey] = value
+    }
+  }
+
+  const mergeActions = (record: Record<string, any> | null | undefined) => {
+    if (!record || typeof record !== 'object') return
+    for (const [rawKey, value] of Object.entries(record)) {
+      if (value === undefined) continue
+      const key = String(rawKey || '').trim()
+      if (!key) continue
+      const normalizedKey = key.startsWith('@') ? key.slice(1) : key
+      actions[normalizedKey] = value
+    }
+  }
+
+  const mergeComponents = (record: Record<string, any> | null | undefined) => {
+    if (!record || typeof record !== 'object') return
+    for (const [rawKey, value] of Object.entries(record)) {
+      if (value === undefined) continue
+      const key = String(rawKey || '').trim()
+      if (!key) continue
+      const normalizedKey = key.startsWith('#') ? key.slice(1) : key
+      components[normalizedKey] = value
+    }
+  }
+
+  const mergeEvents = (record: Record<string, any> | null | undefined) => {
+    if (!record || typeof record !== 'object') return
+    for (const [rawKey, value] of Object.entries(record)) {
+      if (value === undefined) continue
+      const key = String(rawKey || '').trim()
+      if (!key) continue
+      const normalizedKey = key.startsWith('@') ? key.slice(1) : key
+      events[normalizedKey] = value
+    }
+  }
+
+  if (meta && typeof meta.queries === 'object') mergeQueries(meta.queries)
+  if (meta && typeof meta.actions === 'object') mergeActions(meta.actions)
+  if (meta && typeof meta.components === 'object') mergeComponents(meta.components)
+  if (meta && typeof meta.events === 'object') mergeEvents(meta.events)
+
+  const scalarKeys = new Set(['name', 'icon', 'description', 'version', 'author', 'type'])
+
+  for (const [rawKey, value] of Object.entries(meta || {})) {
+    if (value === undefined) continue
+    const key = String(rawKey || '')
+    if (key === 'hypernote' || key === 'queries' || key === 'actions' || key === 'components' || key === 'events') continue
+    if (key.startsWith('$')) {
+      mergeQueries({ [key.slice(1)]: value })
+      continue
+    }
+    if (key.startsWith('@')) {
+      mergeActions({ [key.slice(1)]: value })
+      continue
+    }
+    if (key.startsWith('#')) {
+      mergeComponents({ [key.slice(1)]: value })
+      continue
+    }
+    if (scalarKeys.has(key)) {
+      hypernote[key] = value
+      continue
+    }
+    passthrough[key] = value
+  }
+
+  const normalized: HypernoteMeta = { ...passthrough }
+  if (Object.keys(hypernote).length) normalized.hypernote = hypernote
+  if (Object.keys(queries).length) normalized.queries = queries
+  if (Object.keys(actions).length) normalized.actions = actions
+  if (Object.keys(components).length) normalized.components = components
+  if (Object.keys(events).length) normalized.events = events
+  return normalized
 }
 
 function nodeContainsTemplateDelimiter(node: any): boolean {

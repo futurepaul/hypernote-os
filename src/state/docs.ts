@@ -13,6 +13,7 @@ export function parseFrontmatterName(doc: string): string | undefined {
       const idx = doc.indexOf('\n---\n', 4)
       if (idx !== -1) {
         const meta = YAML.parse(doc.slice(4, idx))
+        if (meta?.hypernote?.name) return String(meta.hypernote.name)
         if (meta?.name) return String(meta.name)
       }
     }
@@ -26,6 +27,7 @@ export function getDocMeta(doc: string): any {
       const idx = doc.indexOf('\n---\n', 4)
       if (idx !== -1) {
         const meta = YAML.parse(doc.slice(4, idx))
+        if (meta?.hypernote) return meta.hypernote
         return meta || {}
       }
     }

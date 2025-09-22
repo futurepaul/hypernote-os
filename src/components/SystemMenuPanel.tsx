@@ -36,7 +36,7 @@ export function SystemMenuPanel() {
         alert('An app with that id already exists')
         return prev
       }
-      const template = `---\nname: ${id}\nicon: folder.png\n---\nHello from ${id}.\n`
+      const template = `---\nhypernote:\n  name: ${id}\n  icon: folder.png\n---\nHello from ${id}.\n`
       const next = { ...prev, [id]: template }
       const userDocs = loadUserDocs()
       saveUserDocs({ ...userDocs, [id]: template })

@@ -130,6 +130,7 @@ export function AppView({ id }: { id: string }) {
 export function parseFrontmatterName(doc: string): string | undefined {
   try {
     const { meta } = compileMarkdownDoc(doc);
+    if (meta?.hypernote?.name) return meta.hypernote.name;
     if (meta && typeof meta.name === "string") return meta.name;
   } catch {}
   return undefined;

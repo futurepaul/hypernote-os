@@ -7,7 +7,7 @@ describe("compiler", () => {
   test("wallet compiles to AST with hstack and buttons", async () => {
     const md = defaultApps.wallet;
     const { ast, meta } = compileMarkdownDoc(md);
-    expect(meta.name).toBe("Wallet");
+    expect(meta.hypernote?.name).toBe("Wallet");
     expect(Array.isArray(ast)).toBe(true);
 
     // Expect first markdown node to include the price text
@@ -27,7 +27,7 @@ describe("compiler", () => {
   test("profile compiles input and button with yaml payloads", async () => {
     const md = defaultApps.profile;
     const { ast, meta } = compileMarkdownDoc(md);
-    expect(meta.name).toBe("Profile");
+    expect(meta.hypernote?.name).toBe("Profile");
     const input = ast.find(n => n.type === "input");
     const button = ast.find(n => n.type === "button");
     expect(input?.data?.text).toContain("nsec or npub");
@@ -35,16 +35,16 @@ describe("compiler", () => {
     expect(button?.data?.action).toBe("@load_profile");
   });
   test("rejects raw html", () => {
-    const bad = `---\nname: Bad\n---\n<div>html</div>`;
+    const bad = `---\nhypernote:\n  name: Bad\n---\n<div>html</div>`;
     expect(() => compileMarkdownDoc(bad)).toThrow(/HTML is not supported/);
   });
 
   test("preserves yaml arrays in frontmatter", () => {
-    const md = `---\nname: Test\n"$items":\n  authors: [$user.pubkey]\n---\nhi\n`;
+    const md = `---\nhypernote:\n  name: Test\nqueries:\n  items:\n    authors: [$user.pubkey]\n---\nhi\n`;
     const compiled = compileMarkdownDoc(md);
-    expect(Array.isArray(compiled.meta["$items"]?.authors)).toBe(true);
+    expect(Array.isArray(compiled.meta.queries?.items?.authors)).toBe(true);
     const roundtrip = compileMarkdownDoc(decompile(compiled));
-    expect(roundtrip.meta["$items"].authors).toEqual(['$user.pubkey']);
+    expect(roundtrip.meta.queries?.items?.authors).toEqual(['$user.pubkey']);
   });
 
   test("app store markdown normalizes inline image references", () => {
@@ -53,7 +53,7 @@ describe("compiler", () => {
   });
 
   test("stack nodes support pixel dimensions", () => {
-    const md = `---\nname: Sized\n---\n\n\`\`\`hstack.start\nwidth: 80px\nheight: 120\n\`\`\`\ncontent\n\`\`\`hstack.end\n\`\`\`\n`;
+    const md = `---\nhypernote:\n  name: Sized\n---\n\n\`\`\`hstack.start\nwidth: 80px\nheight: 120\n\`\`\`\ncontent\n\`\`\`hstack.end\n\`\`\`\n`;
     const compiled = compileMarkdownDoc(md);
     const stack = compiled.ast.find(n => n.type === "hstack");
     expect(stack?.data?.width).toBe("80px");
@@ -66,7 +66,7 @@ describe("compiler", () => {
   });
 
   test("mustache variables survive underscores without emphasis", () => {
-    const md = `---\nname: Feed\n---\n\n{{ $feed.1.display_name }} - {{ $feed.0.created_at }}`;
+    const md = `---\nhypernote:\n  name: Feed\n---\n\n{{ $feed.1.display_name }} - {{ $feed.0.created_at }}`;
     const compiled = compileMarkdownDoc(md);
     const markdownNode = compiled.ast.find(n => n.type === "markdown");
     expect(markdownNode).toBeTruthy();
@@ -85,7 +85,7 @@ describe("compiler", () => {
   });
 
   test("mustache variables inside image urls are preserved", () => {
-    const md = `---\nname: Img\n---\n\n![avatar]({{ $feed.1.picture }}?w=48)`;
+    const md = `---\nhypernote:\n  name: Img\n---\n\n![avatar]({{ $feed.1.picture }}?w=48)`;
     const compiled = compileMarkdownDoc(md);
     const imageNode = compiled.ast
       .find(n => n.type === "markdown")?.markdown?.[0]?.children?.find((child: any) => child.type === 'image');
@@ -99,7 +99,7 @@ describe("compiler", () => {
   });
 
   test("each blocks accept .start and decompile with .start", () => {
-    const md = `---\nname: Items\n---\n\n\`\`\`each.start\nfrom: $items\nas: item\n\`\`\`\nItem: {{ $item.name }}\n\`\`\`each.end\n\`\`\`\n`;
+    const md = `---\nhypernote:\n  name: Items\n---\n\n\`\`\`each.start\nfrom: $items\nas: item\n\`\`\`\nItem: {{ $item.name }}\n\`\`\`each.end\n\`\`\`\n`;
     const compiled = compileMarkdownDoc(md);
     const eachNode = compiled.ast.find(n => n.type === "each");
     expect(eachNode).toBeTruthy();
@@ -109,7 +109,7 @@ describe("compiler", () => {
   });
 
   test("legacy each blocks without suffix still compile", () => {
-    const md = `---\nname: LegacyEach\n---\n\n\`\`\`each\nfrom: $items\nas: item\n\`\`\`\nLegacy: {{ $item.name }}\n\`\`\`each.end\n\`\`\`\n`;
+    const md = `---\nhypernote:\n  name: LegacyEach\n---\n\n\`\`\`each\nfrom: $items\nas: item\n\`\`\`\nLegacy: {{ $item.name }}\n\`\`\`each.end\n\`\`\`\n`;
     const compiled = compileMarkdownDoc(md);
     const eachNode = compiled.ast.find(n => n.type === "each");
     expect(eachNode).toBeTruthy();
@@ -118,7 +118,7 @@ describe("compiler", () => {
   });
 
   test("button payload retains moustache templates", () => {
-    const md = `---\nname: Button\n---\n\n\`\`\`button\ntext: Install\naction: "@install_app"\npayload:\n  naddr: "{{ $app.0.naddr }}"\n\`\`\`\n`;
+    const md = `---\nhypernote:\n  name: Button\n---\n\n\`\`\`button\ntext: Install\naction: "@install_app"\npayload:\n  naddr: "{{ $app.0.naddr }}"\n\`\`\`\n`;
     const compiled = compileMarkdownDoc(md);
     const button = compiled.ast.find(n => n.type === "button");
     expect(button?.data?.payload?.naddr).toBe('{{ $app.0.naddr }}');
@@ -127,7 +127,7 @@ describe("compiler", () => {
   });
 
   test("ensure blank line before fences is auto-inserted", () => {
-    const md = `---\nname: Fence\n---\n\n\`\`\`vstack.start\n\`\`\`\n{{ $feed.0.content }}\n\`\`\`vstack.end\n\`\`\`\n`;
+    const md = `---\nhypernote:\n  name: Fence\n---\n\n\`\`\`vstack.start\n\`\`\`\n{{ $feed.0.content }}\n\`\`\`vstack.end\n\`\`\`\n`;
     const compiled = compileMarkdownDoc(md);
     const markdownNodes = collectNodesOfType(compiled.ast, 'markdown');
     expect(markdownNodes.length).toBeGreaterThan(0);

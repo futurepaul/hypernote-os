@@ -48,7 +48,7 @@ describe("publish/install roundtrip", () => {
     };
 
     try {
-      const source = `---\nname: Test Roundtrip\nicon: folder.png\n---\nHello from tests.\n`;
+      const source = `---\nhypernote:\n  name: Test Roundtrip\n  icon: folder.png\n---\nHello from tests.\n`;
       const compiled = compileMarkdownDoc(source);
 
       const publishRes = await publishApp(compiled, [relay]);
