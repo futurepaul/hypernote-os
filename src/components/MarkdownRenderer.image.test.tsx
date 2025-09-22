@@ -4,14 +4,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { renderMarkdownAst } from "./MarkdownRenderer";
 
 test("image renderer sets width/height from ?w= suffix", () => {
-  const scope = { globals: {}, queries: { "$profile": { picture: "https://example.com/a.png" } } };
+  const scope = { globals: {}, queries: { profile: { picture: "https://example.com/a.png" } } };
   const node = renderMarkdownAst([
     {
       type: "paragraph",
       children: [
         {
           type: "image",
-          url: "{{ $profile.picture?w=48 }}",
+          url: "{{ queries.profile.picture }}?w=48",
           alt: "avatar",
         },
       ],

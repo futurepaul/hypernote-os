@@ -79,7 +79,7 @@ Status: PARTIAL. Generic `login()` + `publishEvent()` added to Hypersauce; `publ
   - Hypersauce emits `Map` instances and unparsed events; we currently normalise them in `queryRuntime`. A JSON-ready mode would collapse this extra pass.
   - Asset URLs do not advertise display metadata, so the renderer parses query strings such as `?w=48`. Hypersauce (or the pipe helpers) could surface `asset.width`/`asset.height` so the view never guesses.
   - Markdown mixed `$profile.picture` and `{{ app.1.picture }}` forms. We standardised on moustache expressions and flag bare `$` usage, but the `||` fallback syntax still needs first-class support (today the renderer only evaluates the first truthy operand). Aim to revive this once Hypersauce exposes richer tuple helpers.
-  - `resolveDollar` proved the value of shared interpolation utilities. Future nodes (`element`, `action`, etc.) should use similar helpers so components stay declarative rather than hand-parsing scope each time.
+  - The new reference resolver proved the value of shared interpolation utilities. Future nodes (`element`, `action`, etc.) should use similar helpers so components stay declarative rather than hand-parsing scope each time.
 - Acceptance: deleting `AppView.tsx` should essentially break rendering; adding back the minimal renderer restores everything without re-implementing special cases.
 
 ### Phase 3 — Actions (write to Nostr)

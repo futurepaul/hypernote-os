@@ -6,6 +6,7 @@ import { nip19 } from 'nostr-tools'
 import { hypersauceClientAtom } from '../state/hypersauce'
 import { mergeScalars, windowScalarsAtom } from '../state/queriesAtoms'
 import type { HypernoteMeta } from '../compiler'
+import { parseReference, resolveReference } from '../interp/reference'
 
 type Unsub = () => void;
 
@@ -35,8 +36,9 @@ class QueryRuntime {
     const pending: PendingMap = { ...(prev.__pending || {}) }
     if (!pending[key]) return
     pending[key] = false
-    const next: Record<string, any> = { __pending: pending }
-    if (prev[key] === PENDING_MARKER) next[key] = []
+    const nextQueries: Record<string, any> = { ...(prev.queries || {}) }
+    if (nextQueries[key] === PENDING_MARKER) nextQueries[key] = []
+    const next: Record<string, any> = { __pending: pending, queries: nextQueries }
     const merged = mergeScalars(prev, next)
     if (merged !== prev) store.set(atom, merged)
     const timers = this.pendingTimers.get(windowId)
@@ -83,20 +85,10 @@ class QueryRuntime {
   async start({ windowId, meta, relays, context, onScalars }: StartArgs) {
     try {
       this.stop(windowId);
-      // Extract queries from meta (new namespaced form or legacy $keys)
-      const queryEntries: Array<[string, any]> = []
-      if (meta && typeof meta.queries === 'object') {
-        for (const [name, def] of Object.entries(meta.queries as Record<string, any>)) {
-          queryEntries.push([`$${name}`, def])
-        }
-      } else {
-        for (const [key, def] of Object.entries(meta || {})) {
-          if (key.startsWith('$')) queryEntries.push([key, def])
-        }
-      }
-      const queryKeys = queryEntries.map(([key]) => key)
-      const hasQueries = queryEntries.length > 0;
-      if (!hasQueries) return; // nothing to start
+      const queriesMeta = (meta && typeof meta.queries === 'object') ? (meta.queries as Record<string, any>) : {};
+      const queryEntries = Object.entries(queriesMeta);
+      if (!queryEntries.length) return; // nothing to start
+      const queryNames = queryEntries.map(([name]) => String(name));
       const ok = await this.ensureClient(relays);
       if (!ok) return; // quietly no-op if hypersauce not available
       // Gate on pubkey: if missing, do not start
@@ -104,27 +96,30 @@ class QueryRuntime {
 
       const doc: any = { type: 'hypernote', name: String(windowId) }
       if (meta?.hypernote && typeof meta.hypernote === 'object') doc.hypernote = meta.hypernote
-      for (const [prefixedKey, def] of queryEntries) {
-        doc[prefixedKey] = def
+      for (const [name, def] of queryEntries) {
+        doc[`$${name}`] = normalizeQueryDefinition(def)
       }
 
       const resolvedDoc = resolveQueryDoc(doc, context)
 
       // Seed pending markers for each declared query so UI can render loading fallbacks
       try {
-        if (queryKeys.length) {
+        if (queryNames.length) {
           const store = getDefaultStore()
           const atom = windowScalarsAtom(windowId)
           const prev = store.get(atom) || {}
           let changed = false
-          const next: Record<string, any> = { ...prev }
-          for (const key of queryKeys) {
-            if (!(key in next)) {
-              next[key] = PENDING_MARKER
+          const nextQueries: Record<string, any> = { ...(prev.queries || {}) }
+          for (const name of queryNames) {
+            if (!(name in nextQueries)) {
+              nextQueries[name] = PENDING_MARKER
               changed = true
             }
           }
-          if (changed) store.set(atom, next)
+          if (changed) {
+            const next = { ...prev, queries: nextQueries }
+            store.set(atom, next)
+          }
         }
       } catch {}
       const store = getDefaultStore()
@@ -133,18 +128,22 @@ class QueryRuntime {
       const pending: PendingMap = { ...(prev.__pending || {}) }
       const timers = this.pendingTimers.get(windowId) ?? new Map<string, ReturnType<typeof setTimeout>>()
       const sentinelUpdate: Record<string, any> = {}
-      for (const key of queryKeys) {
-        pending[key] = true
-        sentinelUpdate[key] = PENDING_MARKER
-        const existingTimer = timers.get(key)
+      for (const name of queryNames) {
+        pending[name] = true
+        sentinelUpdate[name] = PENDING_MARKER
+        const existingTimer = timers.get(name)
         if (existingTimer) clearTimeout(existingTimer)
         const timer = setTimeout(() => {
-          this.clearPending(windowId, key)
+          this.clearPending(windowId, name)
         }, 1500)
-        timers.set(key, timer)
+        timers.set(name, timer)
       }
       this.pendingTimers.set(windowId, timers)
-      const nextSeed = { ...prev, __pending: pending, ...sentinelUpdate }
+      const nextSeed = {
+        ...prev,
+        __pending: pending,
+        queries: { ...(prev.queries || {}), ...sentinelUpdate },
+      }
       const mergedSeed = mergeScalars(prev, nextSeed)
       if (mergedSeed !== prev) store.set(atom, mergedSeed)
 
@@ -152,31 +151,33 @@ class QueryRuntime {
         .runQueryDocumentLive(resolvedDoc, context)
         .subscribe({
           next: (resultMap: Map<string, any>) => {
-            const scalars: Record<string, any> = {};
             const store = getDefaultStore();
             const atom = windowScalarsAtom(windowId);
             const prevSnapshot = store.get(atom) || {};
             const pendingSnapshot: PendingMap = { ...(prevSnapshot.__pending || {}) };
             const windowTimers = this.pendingTimers.get(windowId);
+            const prevQueries: Record<string, any> = { ...(prevSnapshot.queries || {}) };
+            const nextQueries: Record<string, any> = { ...prevQueries };
             for (const [qid, value] of resultMap) {
+              const name = qid.startsWith('$') ? qid.slice(1) : qid;
               const rendered = toRenderable(value);
-              if (pendingSnapshot[qid] && prevSnapshot[qid] === PENDING_MARKER && Array.isArray(rendered) && rendered.length === 0) {
+              if (pendingSnapshot[name] && prevQueries[name] === PENDING_MARKER && Array.isArray(rendered) && rendered.length === 0) {
                 continue;
               }
-              pendingSnapshot[qid] = false;
-              if (windowTimers?.has(qid)) {
-                clearTimeout(windowTimers.get(qid)!);
-                windowTimers.delete(qid);
+              pendingSnapshot[name] = false;
+              if (windowTimers?.has(name)) {
+                clearTimeout(windowTimers.get(name)!);
+                windowTimers.delete(name);
               }
-              scalars[qid] = rendered;
+              nextQueries[name] = rendered;
             }
             if (windowTimers && windowTimers.size === 0) this.pendingTimers.delete(windowId);
-            const next = { ...scalars, __pending: pendingSnapshot };
+            const next = { queries: nextQueries, __pending: pendingSnapshot };
             try {
               const merged = mergeScalars(prevSnapshot, next);
               if (merged !== prevSnapshot) store.set(atom, merged);
             } catch {}
-            onScalars(scalars);
+            onScalars(nextQueries);
           },
           error: (_e: any) => {
             // Intentionally swallow; store may add error channel later
@@ -205,16 +206,20 @@ function deepResolve(value: any, context: any): any {
   if (typeof value === 'string') {
     const trimmed = value.trim()
     if (/^\$[A-Za-z0-9_.-]+$/.test(trimmed)) {
-      const resolved = resolveContextPath(trimmed, context)
+      const resolved = getContextPath(trimmed.slice(1), context)
+      if (resolved !== undefined) return resolved
+    }
+    const ref = parseReference(trimmed)
+    if (ref) {
+      if (ref.root === 'queries') return `$${trimmed.slice('queries.'.length)}`
+      const resolved = resolveReference(trimmed, { globals: context })
       if (resolved !== undefined) return resolved
     }
   }
   return value
 }
 
-function resolveContextPath(token: string, context: any): any {
-  const path = token.startsWith('$') ? token.slice(1) : token
-  if (!path) return undefined
+function getContextPath(path: string, context: any): any {
   const parts = path.split('.').filter(Boolean)
   let current: any = context
   for (const part of parts) {
@@ -222,6 +227,23 @@ function resolveContextPath(token: string, context: any): any {
     current = current[part]
   }
   return current
+}
+
+function normalizeQueryDefinition(value: any): any {
+  if (Array.isArray(value)) return value.map(item => normalizeQueryDefinition(item))
+  if (value && typeof value === 'object') {
+    const out: Record<string, any> = {}
+    for (const [k, v] of Object.entries(value)) out[k] = normalizeQueryDefinition(v)
+    return out
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (trimmed.startsWith('queries.')) {
+      return `$${trimmed.slice('queries.'.length)}`
+    }
+    return value
+  }
+  return value
 }
 
 function toRenderable(value: any): any {

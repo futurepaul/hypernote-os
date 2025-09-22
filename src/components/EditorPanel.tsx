@@ -91,8 +91,8 @@ export function EditorPanel() {
       setPublishing(false)
       return
     }
-    if (!compiled?.meta || typeof compiled.meta !== 'object' || !(compiled.meta.hypernote?.name || compiled.meta.name)) {
-      alert('Frontmatter must include a `name` before publishing.')
+    if (!compiled?.meta || typeof compiled.meta !== 'object' || !compiled.meta.hypernote?.name) {
+      alert('Frontmatter must include `hypernote.name` before publishing.')
       setPublishing(false)
       return
     }

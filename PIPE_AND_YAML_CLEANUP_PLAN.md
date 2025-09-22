@@ -3,6 +3,7 @@
 This plan captures concrete steps for unifying the Hypernote / Hypersauce DSL, informed by the audit and feedback. Each task notes the owner, affected modules, and validation steps (including round-trip compile/decompile against `sample_apps/clock.md`, `sample_apps/feed.md`, and `sample_apps/poast.md`).
 
 ## 1. Frontmatter Restructuring
+- **Status**: DONE — compiler/runtime and sample apps now use `hypernote`/`queries`/`actions` layout; round-trip tests pass with new schema.
 - **Task**: Move queries/actions/components under explicit sections.
   - `hypernote:` metadata (name, icon, etc.).
   - `queries:` map (drop `$` prefix).
@@ -18,15 +19,17 @@ This plan captures concrete steps for unifying the Hypernote / Hypersauce DSL, i
   - Ensure Jotai atoms (`docAtom`, `docActions`) still hydrate correctly under new structure.
 
 ## 2. Namespace Reference Sugar
-- **Task**: Allow moustache references to use scoped paths (`queries.feed[0]`) while supporting `$feed` as sugar.
-- **Owner**: `interpolate.ts`, `resolveDollar.ts`.
+- **Status**: DONE — moustache/action interpolation now resolves `queries.foo`/`user.pubkey`; `$` aliases removed from scope.
+- **Task**: Use scoped paths (`queries.feed[0]`) for moustache references and retire `$` sugar.
+- **Owner**: `interpolate.ts`, `interp/reference.ts`.
 - **Implementation details**:
-  - Extend `resolveDollar` to detect both syntaxes; introduce helper to rewrite `$foo` → `queries.foo` during interpolation.
-  - Document recommended form in DSL spec.
+  - New reference parser resolves dotted/bracket paths; runtime rewrites `queries.*` when emitting Hypersauce docs.
+  - Globals expose `user`, `time`, `form` without `$` mirrors.
 - **Validation**:
-  - Update sample apps; ensure both syntaxes work during transition.
+  - Sample apps + default docs updated; round-trip/compile tests cover new syntax.
 
 ## 3. Pipe Operation Registry
+- **Status**: TODO — awaiting implementation after namespace sugar.
 - **Task**: Define a canonical registry describing each pipe op (name, aliases, arguments, availability in YAML/moustache/actions).
 - **Owner**: Hypersauce (`pipe-engine.ts`, `dsl.ts`); shared util exported for Hypernote.
 - **Implementation details**:
@@ -38,6 +41,7 @@ This plan captures concrete steps for unifying the Hypernote / Hypersauce DSL, i
   - Round-trip tests ensure existing pipelines function.
 
 ## 4. Inline Moustache Pipes
+- **Status**: TODO — blocked on pipe op registry work.
 - **Task**: Enable `{{ expr | op(arg?) }}` syntax, compiling to the same pipe ops.
 - **Owner**: `interpolate.ts`, ops registry.
 - **Implementation details**:
@@ -50,6 +54,7 @@ This plan captures concrete steps for unifying the Hypernote / Hypersauce DSL, i
   - Update sample apps to demonstrate inline pipes once we have helper functions.
 
 ## 5. Helper Function Library
+- **Status**: TODO — helper inventory defined but not yet implemented.
 - **Task**: Ship built-in helpers accessible in both YAML pipes and moustache.
 - **Initial set**: `trim`, `linkify`, `markdown` (string → HTML), `parse_note`, `format_date`, `nip44_decrypt` (wrapping Hypersauce op).
 - **Owner**: Hypersauce (pipe registry) + Hypernote (expose to moustache).
@@ -61,6 +66,7 @@ This plan captures concrete steps for unifying the Hypernote / Hypersauce DSL, i
   - Sample apps updated to exercise at least one helper.
 
 ## 6. Enrich Alignment
+- **Status**: TODO — enrich shape still uses legacy keys.
 - **Task**: Normalize `enrich` op across YAML and moustache.
   - Standard shape: `{ op: 'enrich', input: '$queries.feed', query: 'profile', args: { pubkey: '$item.pubkey' }, output: 'profile' }`.
   - Inline moustache form TBD (single-arg pipe or function-style once decided).
@@ -72,6 +78,7 @@ This plan captures concrete steps for unifying the Hypernote / Hypersauce DSL, i
   - Integration test ensuring enrich populates Feed sample correctly.
 
 ## 7. Code Fence Cleanup
+- **Status**: TODO — legacy space-based fences still accepted.
 - **Task**: Only allow dotted fence syntax (`hstack.start`, `each.start`, `each.end`, etc.).
 - **Owner**: Compiler.
 - **Implementation details**:
@@ -81,6 +88,7 @@ This plan captures concrete steps for unifying the Hypernote / Hypersauce DSL, i
   - Sample apps updated accordingly.
 
 ## 8. Query Filter Merge & Tags
+- **Status**: TODO — duplicate tag handling not yet merged.
 - **Task**: Merge duplicate tag filters (`#t`, `#p`, etc.) instead of overwriting.
 - **Owner**: Hypersauce (`toFilter`).
 - **Implementation details**:
@@ -90,6 +98,7 @@ This plan captures concrete steps for unifying the Hypernote / Hypersauce DSL, i
   - Unit tests in Hypersauce for merging behaviour.
 
 ## 9. Actions Enhancements
+- **Status**: TODO — awaiting namespace sugar and pipe registry decisions.
 - **Task**: Prepare actions for pipe support and consistent naming.
 - **Owner**: `src/state/actions.ts`.
 - **Implementation details**:
@@ -101,6 +110,7 @@ This plan captures concrete steps for unifying the Hypernote / Hypersauce DSL, i
   - Sample apps ensure actions still function.
 
 ## 10. Schema & Validation
+- **Status**: TODO — schema work to follow DSL stabilization.
 - **Task**: Produce JSON Schema for Hypernote docs and optionally Zod/Valibot adapters.
 - **Owner**: Compiler + tooling.
 - **Implementation details**:
@@ -112,12 +122,14 @@ This plan captures concrete steps for unifying the Hypernote / Hypersauce DSL, i
   - Ensure schema and runtime stay in sync.
 
 ## 11. Tests & Docs
+- **Status**: TODO — baseline coverage exists; new scenarios pending feature work.
 - **Task**: Expand regression coverage.
   - Each loading fallback, pending sentinel, action interpolation, moustache pipelines.
   - Sample app roundtrips after each major change.
 - **Owner**: Both repos.
 
 ## 12. Documentation
+- **Status**: TODO — audit tracked in README; new DSL spec pending feature completion.
 - **Task**: Produce DSL spec in repo (supersede audit once implemented).
   - Include examples for queries, actions, moustache piping, helper usage.
 
@@ -128,4 +140,3 @@ This plan captures concrete steps for unifying the Hypernote / Hypersauce DSL, i
 2. Build the pipe operation registry and expose helpers.
 3. Implement moustache piping + `||` → `coalesce` rewrite.
 4. Update sample apps to new syntax; use them for regression tests.
-

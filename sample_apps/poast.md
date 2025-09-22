@@ -6,7 +6,7 @@ actions:
     after:
       clear:
         - editor
-    content: "{{ $form.editor }}"
+    content: "{{ form.editor }}"
     kind: 1
     tags:
       - - client
@@ -17,7 +17,7 @@ Compose a note and share it on Nostr.
 
 
 ```markdown-editor
-id: $editor
+id: editor
 placeholder: What's on your mind?
 ```
 
@@ -25,5 +25,5 @@ placeholder: What's on your mind?
 
 ```button
 text: Poast
-action: post_note
+action: actions.post_note
 ```

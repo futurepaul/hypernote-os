@@ -47,11 +47,8 @@ export function AppView({ id }: { id: string }) {
     const timeObj = { now: timeNow };
     return {
       user: globalsUser,
-      $user: globalsUser,
       time: timeObj,
-      $time: timeObj,
       form: forms,
-      $form: forms,
     };
   }, [globalsUser, timeNow, forms]);
   // Fallback: if Hypersauce queries are unavailable, derive $profile from user.profile
@@ -89,14 +86,8 @@ export function AppView({ id }: { id: string }) {
     if (!compiled || compileError) return;
     const userContext = globals.user?.pubkey ? { pubkey: globals.user.pubkey } : undefined
     const ctx: Record<string, any> = {}
-    if (userContext) {
-      ctx.user = userContext
-      ctx.$user = userContext
-    }
-    if (forms && Object.keys(forms || {}).length > 0) {
-      ctx.form = forms
-      ctx.$form = forms
-    }
+    if (userContext) ctx.user = userContext
+    if (forms && Object.keys(forms || {}).length > 0) ctx.form = forms
     queryRuntime.start({
       windowId: id,
       meta: compiled.meta,
@@ -107,8 +98,10 @@ export function AppView({ id }: { id: string }) {
     return () => queryRuntime.stop(id)
   }, [id, compiled, compileError, globals.user.pubkey, relays])
 
-  const EMPTY: Record<string, any> = useMemo(() => ({}), []);
-  const queriesForWindow = rawScalars ?? EMPTY;
+  const EMPTY_QUERIES: Record<string, any> = useMemo(() => ({}), []);
+  const EMPTY_PENDING: Record<string, boolean> = useMemo(() => ({}), []);
+  const queriesForWindow = (rawScalars?.queries as Record<string, any> | undefined) ?? EMPTY_QUERIES;
+  const pendingMap = (rawScalars?.__pending as Record<string, boolean> | undefined) ?? EMPTY_PENDING;
 
   if (compileError) {
     return (
@@ -124,7 +117,7 @@ export function AppView({ id }: { id: string }) {
     return <div className="p-4 text-sm text-red-800 bg-red-50 border border-red-200 rounded">Document unavailable.</div>;
   }
 
-  return <RenderNodes nodes={nodes} globals={globals} windowId={id} queries={queriesForWindow} debug={debug} />;
+  return <RenderNodes nodes={nodes} globals={globals} windowId={id} queries={queriesForWindow} pending={pendingMap} debug={debug} />;
 }
 
 export function parseFrontmatterName(doc: string): string | undefined {

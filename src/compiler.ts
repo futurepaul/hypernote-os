@@ -2,6 +2,7 @@ import YAML from "yaml";
 import { markdown } from "very-small-parser";
 import { toText as markdownToText } from "very-small-parser/lib/markdown/block/toText";
 import { sanitizeStackConfig } from "./lib/layout";
+import { isReferenceExpression } from "./interp/reference";
 
 export type UiNode = {
   id: string;
@@ -10,7 +11,7 @@ export type UiNode = {
   markdown?: any;
   text?: string;
   data?: any;
-  refs?: string[]; // variable references (e.g., $profile.name, $user.pubkey, $time.now)
+  refs?: string[]; // variable references (e.g., queries.profile.name, user.pubkey, time.now)
 };
 
 export interface HypernoteMeta {
@@ -162,7 +163,7 @@ const flush = () => {
         const rawBlock = (t.value || "").trim();
         const parsed = safeParseYamlBlock(rawBlock);
         const data = restoreTemplateData(parsed, templates.map);
-        let source = String((data?.from ?? data?.source) || '$items');
+        let source = String((data?.from ?? data?.source) || 'queries.items');
         let as = String(data?.as || 'item');
         if (as.startsWith('$')) as = as.slice(1);
         const node: UiNode = { id: genId(), type: "each", children: [], data: { source, as } };
@@ -207,6 +208,7 @@ const flush = () => {
   }
 
   const normalizedMeta = normalizeMeta(meta)
+  if (normalizedMeta.queries) assertNoLegacyQueryRefs(normalizedMeta.queries)
 
   return { meta: normalizedMeta, ast: root.children || [] };
 }
@@ -222,19 +224,12 @@ function extractRefs(text: string): string[] {
     const expr = String(m[1] ?? '').trim();
     if (!expr) continue;
     const parts = expr.split('||').map(part => part.trim()).filter(Boolean);
-    for (const part of parts.length ? parts : ['']) {
-      const tokenMatch = part.match(/^[$]?[a-zA-Z0-9_.-]+/);
-      if (tokenMatch) {
-        const token = tokenMatch[0];
-        if (!token.startsWith('$')) {
-          throw new Error(`Variables in templates must start with '$'. Found "${token}" in "{{ ${expr} }}".`);
-        }
-        refs.add(token);
-      }
+    const candidates = parts.length ? parts : [''];
+    for (const part of candidates) {
+      if (!part) continue;
+      if (isReferenceExpression(part)) refs.add(part);
     }
   }
-  const dollar = /(\$[a-zA-Z0-9_.-]+)/g;
-  while ((m = dollar.exec(text)) !== null) if (m[1]) refs.add(String(m[1]));
   return Array.from(refs);
 }
 
@@ -410,8 +405,7 @@ function normalizeMeta(meta: Record<string, any> | null | undefined): HypernoteM
       if (value === undefined) continue
       const key = String(rawKey || '').trim()
       if (!key) continue
-      const normalizedKey = key.startsWith('$') ? key.slice(1) : key
-      queries[normalizedKey] = value
+      queries[key] = value
     }
   }
 
@@ -421,8 +415,7 @@ function normalizeMeta(meta: Record<string, any> | null | undefined): HypernoteM
       if (value === undefined) continue
       const key = String(rawKey || '').trim()
       if (!key) continue
-      const normalizedKey = key.startsWith('@') ? key.slice(1) : key
-      actions[normalizedKey] = value
+      actions[key] = value
     }
   }
 
@@ -459,14 +452,6 @@ function normalizeMeta(meta: Record<string, any> | null | undefined): HypernoteM
     if (value === undefined) continue
     const key = String(rawKey || '')
     if (key === 'hypernote' || key === 'queries' || key === 'actions' || key === 'components' || key === 'events') continue
-    if (key.startsWith('$')) {
-      mergeQueries({ [key.slice(1)]: value })
-      continue
-    }
-    if (key.startsWith('@')) {
-      mergeActions({ [key.slice(1)]: value })
-      continue
-    }
     if (key.startsWith('#')) {
       mergeComponents({ [key.slice(1)]: value })
       continue
@@ -485,6 +470,42 @@ function normalizeMeta(meta: Record<string, any> | null | undefined): HypernoteM
   if (Object.keys(components).length) normalized.components = components
   if (Object.keys(events).length) normalized.events = events
   return normalized
+}
+
+const LEGACY_PLACEHOLDER_PREFIXES = ['$item', '$pubkey', '$event', '$context', '$args', '$arg', '$note'];
+
+function isAllowedPlaceholder(value: string): boolean {
+  return LEGACY_PLACEHOLDER_PREFIXES.some(prefix => value === prefix || value.startsWith(`${prefix}.`));
+}
+
+function assertNoLegacyQueryRefs(queries: Record<string, any>) {
+  const visit = (node: any, path: string[]) => {
+    if (Array.isArray(node)) {
+      node.forEach((child, index) => visit(child, path.concat(String(index))));
+      return;
+    }
+    if (node && typeof node === 'object') {
+      for (const [key, value] of Object.entries(node)) visit(value, path.concat(key));
+      return;
+    }
+    if (typeof node !== 'string') return;
+    const trimmed = node.trim();
+    if (!trimmed.startsWith('$')) return;
+    const key = path[path.length - 1] || '';
+    if (key === 'from' || key === 'with') {
+      if (!trimmed.startsWith('$item.')) {
+        throw new Error(`Legacy "$" reference "${trimmed}" found at ${path.join('.')}. Use "queries.${trimmed.slice(1)}" instead.`);
+      }
+      return;
+    }
+    if (key === 'authors') {
+      if (!isAllowedPlaceholder(trimmed)) {
+        throw new Error(`Legacy "$" reference "${trimmed}" found at ${path.join('.')}. Use "queries.${trimmed.slice(1)}" or a supported placeholder.`);
+      }
+    }
+  };
+
+  for (const [name, def] of Object.entries(queries)) visit(def, ['queries', name]);
 }
 
 function nodeContainsTemplateDelimiter(node: any): boolean {

@@ -6,17 +6,17 @@ This document surveys the current Hypernote / Hypersauce DSL surfaces (frontmatt
 
 | Surface | Definition | Notes |
 | --- | --- | --- |
-| Frontmatter meta | `src/compiler.ts` (parsed with `yaml`) | Houses Nostr query definitions (prefixed `$…`), actions (`actions:` map), and arbitrary metadata like `icon`/`name`. |
+| Frontmatter meta | `src/compiler.ts` (parsed with `yaml`) | Houses namespaced Nostr query definitions (`queries:` map), actions (`actions:` map), and arbitrary metadata like `icon`/`name`. |
 | Code fences | ` ```button`, ` ```input`, ` ```each.start`, etc. | Produce UI nodes with YAML payloads (`safeParseYamlBlock`). Multiple spellings exist (e.g. `hstack start` vs `hstack.start`). |
 | Runtime queries | `hypersauce/dsl.ts`, `types.ts`, `client.ts` | `QueryDefinition` mixes filter fields (`kinds`, `authors`, `#t`, …) with pipe transform stages. |
 | Pipe engine | `hypersauce/pipe-engine.ts` | Executes array of imperative ops (`get`, `first`, `json`, `kvconnect_pick`, …). |
 | Actions | `actions:` map in frontmatter → `src/state/actions.ts` | Templates for Nostr events; interpolated with `{{ }}` and `resolveDollar` helpers. |
-| Moustache interpolation | `src/interp/interpolate.ts` | Replaces `{{ expr }}`; supports `||` fallback, `$query.path`, `$form.field`. No inline piping yet. |
+| Moustache interpolation | `src/interp/interpolate.ts` | Replaces `{{ expr }}`; supports `||` fallback, `queries.foo[0]`/`user.pubkey` paths. No inline piping yet. |
 
 ## 2. Current Inconsistencies & Redundancies
 
 ### 2.1 Query positioning
-- Queries live at the **top level** of frontmatter (`"$feed"`, `"$profile"`), whereas actions live under an `actions:` block (`THE_REAL_HYPERNOTE_OS_VISION.md:88`).
+- Queries should live under a `queries:` block (no `$` prefix) alongside `actions:`.
 - Components (`#component`) and events (`@event`) follow the same prefix convention as queries. Mixing top-level prefixed keys with nested maps makes scanning harder.
 
 **Idea**: consolidate under namespaced sections. Example:
@@ -24,7 +24,7 @@ This document surveys the current Hypernote / Hypersauce DSL surfaces (frontmatt
 queries:
   feed:
     kinds: [1]
-    authors: $contact_list
+    authors: queries.contact_list
     pipe: [...]
 actions:
   post_note:
@@ -33,12 +33,12 @@ actions:
 ```
 Compiler can accept old prefixes for now but warn, or we cut over pre-launch.
 
-PAUL: yes, this looks good to me. I like that it removes the `$` prefix! do we even need the `$` prefix for $contact_list? removing these prefixes makes it easier to write yaml (don't need to quote strings with prefixes that yaml chokes on)
+PAUL: yes, this looks good to me. I like that it removes the `$` prefix! do we even need the prefix for queries.contact_list? removing these prefixes makes it easier to write yaml (don't need to quote strings with prefixes that yaml chokes on)
 
 ### 2.2 Terminology drift
 - `each.start` YAML expects `from` *or* `source`. Downstream (`EachNode`) normalizes to `source` (`src/components/nodes.tsx:282`).
 - `json` pipe uses `{ from, as }`; `nip44_decrypt` uses `{ from?, as? }`; `map` uses a `field`; `kvconnect_pick` uses `id`/`criteria`. Consistent naming (e.g. always `{ input, output }`) would boost clarity.
-- `get` vs inline moustache `$feed.0.content` vs stack config `width:` vs `height:` etc.
+- `get` vs inline moustache `queries.feed[0].content` vs stack config `width:` vs `height:` etc.
 
 **Idea**: adopt shared vocabulary:
 - `input`/`output` (or `source`/`target`) for transforms.
@@ -54,7 +54,7 @@ PAUL: I like input / output a lot! `from` for query ids makes a lot of sense. an
 PAUL: yes please get rid of `hstack start` and `each start`! they should always have a dot notation.
 
 ### 2.4 Pipes wired only in YAML
-- Pipe definitions live under `query.pipe`. Moustache interpolation can only use `||` fallback. No inline piping (`{{ $note.content | parse_note }}`) or chained transforms in actions/templates.
+- Pipe definitions live under `query.pipe`. Moustache interpolation can only use `||` fallback. No inline piping (`{{ queries.note.content | parse_note }}`) or chained transforms in actions/templates.
 - `PipeEngine` already implements stateless transforms; we can expose them to moustache by compiling `| op` expressions into the same op list.
 
 PAUL: I like the suggestion of compiling everything in mustache into pipes so we can use all the same ops and syntax. and I like the idea of compiling `||` into coalesce!
@@ -67,8 +67,8 @@ PAUL: since we're getting rid of the prefix in the frontmatter let's get rid of 
 PAUL: actions WILL eventually need pipe queries to do data transforms / pull data from the queries before posting. I don't have a good example use yet but we should at least keep this in mind and put comments in the code where this would go!
 
 ### 2.6 Async enrich & loading state
-- `enrich` pipe is handled in Hypersauce `client.ts` with parameterized queries. YAML shape is `{ enrich: { with: $profile, args: { pubkey: $item.pubkey }, label: profile } }`.
-- No way to re-use enrich results in moustache aside from `$item.1.profile`. Aligning this with the general pipe/moustache story would be nice.
+- `enrich` pipe is handled in Hypersauce `client.ts` with parameterized queries. YAML shape is `{ enrich: { with: queries.profile, args: { pubkey: item.pubkey }, label: profile } }`.
+- No way to re-use enrich results in moustache aside from `item[1].profile`. Aligning this with the general pipe/moustache story would be nice.
 
 PAUL: enrich is kind of a weird guy. we should align it with pipes/moustache. are you saying we have to pull this out of hypersauce? my ideal world is we move MORE stuff to hypersauce so it's useful for other clients down the road. (hypernote os is just one way of interacting with hypernote!)
 
@@ -83,7 +83,7 @@ hypernote:
 queries:
   contact_list:
     kinds: [3]
-    authors: [$user.pubkey]
+    authors: [user.pubkey]
     limit: 1
     pipe:
       - first
@@ -92,26 +92,26 @@ queries:
       - pluck: { field: tags.1 }
   feed:
     kinds: [1]
-    authors: $queries.contact_list
+    authors: queries.contact_list
     pipe:
-      - enrich: { with: $queries.profile, args: { pubkey: $item.pubkey } }
+      - enrich: { with: queries.profile, args: { pubkey: item.pubkey } }
 actions:
   post_note:
     kind: 1
     content: "{{ form.note | trim }}"
 ```
-- Explicit namespaces reduce string-prefix magic (`$feed` → `$queries.feed`).
+- Explicit namespaces reduce string-prefix magic (`$feed` → `queries.feed`).
 - Lets us introduce metadata per section (`queries` default relays, `actions` default tags, etc.).
 
 PAUL: I LOVE the idea of prefixing stuff with `queries.` and get rid of the kind of ambiguous `$` prefixing if at all possible! it's kind of a convention in js for "reactive" stuff... but everything we're doing is reactive so it might be kind of redundant and it's sort of mysterious right now when it's needed. (also mysterious right now where it's optional! there should only be one way!) 
 
 ### 3.2 Shared piping everywhere
-- Extend moustache parser to support `|` with existing `PipeEngine` ops: `{{ $note.content | nip44_decrypt(secret=$user.secret) | parse_note }}`.
-  - Re-use `toPipeOps` by accepting inline syntax either as strings (`"nip44_decrypt"`) or JS-like call `nip44_decrypt(secret=$user.secret)`. For moustache we can compile to JSON representation before handing to engine.
+- Extend moustache parser to support `|` with existing `PipeEngine` ops: `{{ queries.note.content | nip44_decrypt(secret=user.secret) | parse_note }}`.
+  - Re-use `toPipeOps` by accepting inline syntax either as strings (`"nip44_decrypt"`) or JS-like call `nip44_decrypt(secret=user.secret)`. For moustache we can compile to JSON representation before handing to engine.
 - YAML pipelines (`query.pipe`, future `actions.pipe`) and moustache inline pipes should share the same registry and argument schema.
 - Introduce `pipe.aliases` table for operations that differ today (`pluckIndex` vs `pluck`, `map` vs `get` etc.).
 
-PAUL: I don't like the js-like call `nip44_decrypt(secret=$user.secret)` if we can't do it with a simple pipe op then it's not gonna be fun (the discovery is really bad for arg names). let's stay married to pipes!
+PAUL: I don't like the js-like call `nip44_decrypt(secret=user.secret)` if we can't do it with a simple pipe op then it's not gonna be fun (the discovery is really bad for arg names). let's stay married to pipes!
 PAUL: DEF want one registry for query.pipe, actions.pipe, and moustache inline pipes! that's vital!
 PAUL: it makes sense to do aliases just for a little bit but we should delete it once I've republished all my current apps with the correct syntax, so keep a list of changes somewhere so I can refer to it and get on the new syntax asap!
 
@@ -125,7 +125,7 @@ PAUL: groups make sense to me. renames make sense to me. standardize argument ke
 ### 3.4 Query filters
 - Currently `authors` accepts string or array; `#p`/`#t` only accept arrays. We should support string shorthand for tags too (compiler normalizes to array).
 - Document multi-tag semantics: if a query needs multiple `#t` arrays they currently collide. Proposal: allow object syntax `tags: { t: ['foo','bar'], r: [...] }` which `toFilter` expands.
-- Investigate whether `authors` referencing another query via `$` should be explicit (e.g., `$queries.contact_list.result`) to avoid confusion with moustache paths.
+- Investigate whether `authors` referencing another query via namespace should be explicit (e.g., `queries.contact_list`) to avoid confusion with moustache paths.
 
 PAUL: I actually prefer it if we require array for both... that's typical for nostr. your choice on best way to handle multi-tag but it should work!
 PAUL: referencing another query should use path / pipe access just like in mustache!
@@ -133,14 +133,14 @@ PAUL: referencing another query should use path / pipe access just like in musta
 ### 3.5 Built-in helpers & functions
 - Add canonical helper library (pure functions) for moustache + pipes: `trim`, `markdown`, `parse_note`, `linkify`, `emoji`. Could be built as pipe ops but also available inline.
 - Provide consistent `nip44_decrypt`/`nip44_encrypt` operations: both as pipe ops and moustache functions, without requiring manual path lookups.
-- For decrypt operations requiring secret keys, standardize how secrets are resolved (context path vs inline args). Maybe `nip44_decrypt(secret=$user.secret, pubkey=$item.pubkey)`.
+- For decrypt operations requiring secret keys, standardize how secrets are resolved (context path vs inline args). Maybe `nip44_decrypt(secret=user.secret, pubkey=item.pubkey)`.
 
 PAUL: I like linkify, trim, markdown, parse_note. not sure what emoji is. we should also have a format_date that returns date and time (no extra args! just takes the timestamp!)
 
 ### 3.6 Enrich & compose
-- Treat `enrich` as first-class pipe op with structured arguments: `{ op: 'enrich', query: '$queries.profile', args: { pubkey: '$item.pubkey' }, as: 'profile' }`.
+- Treat `enrich` as first-class pipe op with structured arguments: `{ op: 'enrich', query: 'queries.profile', args: { pubkey: 'item.pubkey' }, as: 'profile' }`.
 - Support `with` (existing) and `assign` (brown?). Align naming with proposed `input`/`output` pattern.
-- Allow moustache inline: `{{ $feed | enrich:$profile(pubkey=$item.pubkey) }}` which returns `[item, enriched]` or merges into object.
+- Allow moustache inline: `{{ queries.feed | enrich:queries.profile(pubkey=item.pubkey) }}` which returns `[item, enriched]` or merges into object.
 
 PAUL: not sure what assign is for. but yes do align naming
 PAUL: maybe it would be best if moustache only supports pipes with single args? I'm trying to avoid this function syntax but it is kind of nice for this use case! argh!

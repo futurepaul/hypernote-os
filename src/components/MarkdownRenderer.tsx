@@ -1,7 +1,7 @@
 import { Fragment, type ReactNode } from "react";
 import type { JSX } from "react";
 import { interpolate as interp } from "../interp/interpolate";
-import { resolveDollarPath } from "../interp/resolveDollar";
+import { resolveReference } from "../interp/reference";
 
 export type MarkdownScope = { globals: any; queries: Record<string, any> };
 
@@ -122,17 +122,19 @@ function extractUrlFromSibling(node: any, scope: MarkdownScope): string | null {
 function interpolateScalar(value: unknown, scope: MarkdownScope): string {
   const raw = typeof value === "string" ? value : "";
   const viaTemplate = interpolateTemplate(raw, scope);
-  const resolved = resolveDollarPath(viaTemplate, scope.queries) ?? resolveDollarPath(raw, scope.queries);
-  if (resolved != null) return String(resolved);
-  return typeof viaTemplate === "string" ? viaTemplate : "";
+  if (viaTemplate !== raw) return viaTemplate;
+  const resolved = resolveReference(raw.trim(), scope);
+  if (resolved != null && resolved !== undefined) return String(resolved);
+  return viaTemplate;
 }
 
 function interpolateAttribute(value: unknown, scope: MarkdownScope): string {
   const raw = typeof value === "string" ? value : "";
   const viaTemplate = interpolateTemplate(raw, scope);
-  const resolved = resolveDollarPath(viaTemplate, scope.queries) ?? resolveDollarPath(raw, scope.queries);
-  if (resolved != null) return String(resolved);
-  return typeof viaTemplate === "string" ? viaTemplate : "";
+  if (viaTemplate !== raw) return viaTemplate;
+  const resolved = resolveReference(raw.trim(), scope);
+  if (resolved != null && resolved !== undefined) return String(resolved);
+  return viaTemplate;
 }
 
 function interpolateTemplate(text: string, scope: MarkdownScope): string {

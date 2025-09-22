@@ -16,7 +16,7 @@ queries:
           eq: p
       - pluckIndex: 1
   following_feed:
-    authors: $contact_list
+    authors: queries.contact_list
     kinds:
       - 1
     limit: 20
@@ -36,10 +36,10 @@ queries:
         - 0
       limit: 1
   feed_enriched:
-    from: $following_feed
+    from: queries.following_feed
     pipe:
       - enrich:
-          with: $profile
+          with: queries.profile
           args:
             pubkey: $item.pubkey
           label: profile
@@ -47,21 +47,21 @@ queries:
 
 
 ```each.start
-from: $feed_enriched
+from: queries.feed_enriched
 as: feed
 ```
 
 ```hstack.start
 width: 400px
 ```
-![avatar]({{ $feed.1.picture }}?w=48)
+![avatar]({{ feed[1].picture }}?w=48)
 
 ```vstack.start
 width: 352px
 ```
-__{{ $feed.1.display_name || $feed.1.name }}__ - {{ $feed.0.created_at }}
+__{{ feed[1].display_name || feed[1].name }}__ - {{ feed[0].created_at }}
 
-{{ $feed.0.content }}
+{{ feed[0].content }}
 ```vstack.end
 ```
 

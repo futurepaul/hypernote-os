@@ -8,6 +8,7 @@ import { interpolate as interp } from "../interp/interpolate";
 import { useAction, normalizeActionName } from "../state/actions";
 import { renderMarkdownAst, type MarkdownScope } from "./MarkdownRenderer";
 import { sanitizeStackConfig } from "../lib/layout";
+import { resolveReference, referenceQueryId } from "../interp/reference";
 
 export type Node = UiNode;
 
@@ -16,6 +17,7 @@ type RenderNodesProps = {
   globals: any;
   windowId: string;
   queries: Record<string, any>;
+  pending?: Record<string, boolean>;
   inline?: boolean;
   debug?: boolean;
 };
@@ -82,19 +84,8 @@ function deriveLoopKey(nodeId: string | undefined, item: any, index: number): st
 
 function MarkdownNode({ n, globals, queries }: { n: Node; globals: any; queries: Record<string, any> }) {
   const deps = useMemo(() => {
-    const refs = n.refs || [];
-    const q: Record<string, any> = (queries && typeof queries === "object") ? queries : {};
-    const getPath = (obj: any, path: string) => path.split('.').reduce((acc, k) => (acc && typeof acc === 'object') ? acc[k] : undefined, obj);
-    return refs.map(ref => {
-      if (ref.startsWith('$')) {
-        const [id, ...rest] = ref.split('.');
-        const idKey = String(id);
-        const base = (q as any)[idKey] !== undefined ? (q as any)[idKey] : getPath(globals, idKey);
-        const v = rest.length ? getPath(base, rest.join('.')) : base;
-        return JSON.stringify(v ?? '');
-      }
-      return String(getPath(globals, ref) ?? '');
-    });
+    const refs = Array.isArray(n.refs) ? n.refs : [];
+    return refs.map(ref => JSON.stringify(resolveReference(ref, { globals, queries }) ?? ''));
   }, [n.refs, queries, globals]);
 
   const scope = useMemo<MarkdownScope>(() => ({ globals, queries }), [globals, queries]);
@@ -280,21 +271,23 @@ function MarkdownEditorNode({ data, windowId }: { data?: any; windowId: string }
   );
 }
 
-function EachNode({ node, globals, windowId, queries, debug = false }: { node: Node; globals: any; windowId: string; queries: Record<string, any>; debug?: boolean }) {
+const PENDING_MARKER = '__pending__';
+
+function EachNode({ node, globals, windowId, queries, pending, debug = false }: { node: Node; globals: any; windowId: string; queries: Record<string, any>; pending?: Record<string, boolean>; debug?: boolean }) {
   const data = node.data || {};
-  const sourceRaw = typeof data.source === 'string' ? data.source : '$items';
-  const source = sourceRaw.trim() || '$items';
-  const asName = typeof data.as === 'string' && data.as.length > 0 ? data.as : 'item';
-  const listRaw = queries ? queries[source] : undefined;
+  const sourceExpr = typeof data.source === 'string' ? data.source.trim() : 'queries.items';
+  const asNameRaw = typeof data.as === 'string' && data.as.length > 0 ? data.as : 'item';
+  const asName = asNameRaw.trim() || 'item';
+  const listRaw = resolveReference(sourceExpr, { globals, queries });
   const list = Array.isArray(listRaw) ? listRaw : [];
-  if (listRaw === '__pending__') {
+  if (listRaw === PENDING_MARKER) {
     return <div className="italic text-sm text-gray-600">Loading…</div>;
   }
-  const pendingMap = (queries && typeof queries === 'object') ? (queries.__pending as Record<string, boolean> | undefined) : undefined;
-  if (pendingMap && pendingMap[source]) {
+  const sourceQueryId = referenceQueryId(sourceExpr);
+  if (pending && sourceQueryId && pending[sourceQueryId]) {
     return <div className="italic text-sm text-gray-600">Loading…</div>;
   }
-  if (debug) console.log(`[Each] source=${source}`, { length: list.length });
+  if (debug) console.log(`[Each] source=${sourceExpr}`, { length: list.length });
   if (!Array.isArray(listRaw)) {
     return <div className="italic text-sm text-gray-600">Loading…</div>;
   }
@@ -303,13 +296,10 @@ function EachNode({ node, globals, windowId, queries, debug = false }: { node: N
   return (
     <div className="flex flex-col gap-3">
       {list.map((item, index) => {
-        const dollarAlias = asName.startsWith('$') ? asName : `$${asName}`;
         const loopGlobals = {
           ...globals,
           [asName]: item,
-          [dollarAlias]: item,
           [`${asName}Index`]: index,
-          [`${dollarAlias}Index`]: index,
         };
         const stableKey = deriveLoopKey(node.id, item, index);
         return (
@@ -348,7 +338,7 @@ function stackStyleFromData(data: any): CSSProperties | undefined {
   return style;
 }
 
-export function RenderNodes({ nodes, globals, windowId, queries, inline = false, debug = false }: RenderNodesProps) {
+export function RenderNodes({ nodes, globals, windowId, queries, pending, inline = false, debug = false }: RenderNodesProps) {
   const renderNode = (n: Node, key: number): ReactNode => {
     if (n.type === "markdown") {
       return <MarkdownNode key={n.id || key} n={n} globals={globals} queries={queries} />;
@@ -402,6 +392,7 @@ export function RenderNodes({ nodes, globals, windowId, queries, inline = false,
               globals={globals}
               windowId={windowId}
               queries={queries}
+              pending={pending}
               inline
               debug={debug}
             />
@@ -417,6 +408,7 @@ export function RenderNodes({ nodes, globals, windowId, queries, inline = false,
           globals={globals}
           windowId={windowId}
           queries={queries}
+          pending={pending}
           debug={debug}
         />
       );

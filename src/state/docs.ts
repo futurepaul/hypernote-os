@@ -14,7 +14,6 @@ export function parseFrontmatterName(doc: string): string | undefined {
       if (idx !== -1) {
         const meta = YAML.parse(doc.slice(4, idx))
         if (meta?.hypernote?.name) return String(meta.hypernote.name)
-        if (meta?.name) return String(meta.name)
       }
     }
   } catch {}

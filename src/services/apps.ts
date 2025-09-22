@@ -15,11 +15,11 @@ export function slugify(name: string): string {
 export async function publishApp({ meta, ast }: { meta: any; ast: any }, relays: string[]) {
   const client = getDefaultStore().get(hypersauceClientAtom) as any
   if (!client) throw new Error('Hypersauce client not initialized')
-  const name = String(meta?.hypernote?.name || meta?.name || 'app')
+  const name = String(meta?.hypernote?.name || 'app')
   const d = slugify(name)
   const version = '1.2.0'
   const content = JSON.stringify({ version, meta, ast })
-  const appType = String(meta?.hypernote?.type || meta?.type || 'application')
+  const appType = String(meta?.hypernote?.type || 'application')
   const tags: string[][] = [
     ['d', d],
     ['hypernote', version],
@@ -27,8 +27,8 @@ export async function publishApp({ meta, ast }: { meta: any; ast: any }, relays:
     ['t', `hypernote-${appType}`],
     ['t', `hypernote-v${version}`],
   ]
-  if (meta?.hypernote?.name || meta?.name) tags.push(['title', String(meta?.hypernote?.name ?? meta?.name)])
-  if (meta?.hypernote?.description || meta?.description) tags.push(['description', String(meta?.hypernote?.description ?? meta?.description)])
+  if (meta?.hypernote?.name) tags.push(['title', String(meta.hypernote.name)])
+  if (meta?.hypernote?.description) tags.push(['description', String(meta.hypernote.description)])
   const res = await client.publishEvent({ kind: 32616, content, tags })
   // Encode naddr (assuming single relay set is fine for now without relays list)
   const naddr = nip19.naddrEncode({ kind: 32616, pubkey: res.event.pubkey, identifier: d })
@@ -90,7 +90,7 @@ export async function installByNaddr(naddr: string, relays: string[]): Promise<{
       }
       try {
         const md = decompile({ meta, ast } as any)
-        const id = String((meta?.hypernote?.name || meta?.name) ? slugify(meta?.hypernote?.name ?? meta?.name) : identifier)
+        const id = String(meta?.hypernote?.name ? slugify(meta.hypernote.name) : identifier)
         cleanup()
         resolve({ id, markdown: md, meta, ast })
       } catch (err) {

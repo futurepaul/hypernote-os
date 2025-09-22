@@ -1,17 +1,28 @@
 import { expect, test } from "bun:test";
-import { resolveDollar, resolveDollarPath } from "../interp/resolveDollar";
+import { parseReference, resolveReference } from "../interp/reference";
 
-test("resolveDollarPath resolves plain dollar paths", () => {
-  const value = resolveDollarPath("$profile.picture", { "$profile": { picture: "https://example/p.png" } });
-  expect(value).toBe("https://example/p.png");
+test("parseReference reads bracket notation", () => {
+  const ref = parseReference("queries.feed[0].content");
+  expect(ref).toEqual({ root: "queries", segments: ["feed", 0, "content"] });
 });
 
-test("resolveDollarPath preserves suffix like query params", () => {
-  const value = resolveDollarPath("$profile.picture?w=48", { "$profile": { picture: "https://example/p.png" } });
-  expect(value).toBe("https://example/p.png?w=48");
+test("resolveReference navigates arrays and objects", () => {
+  const scope = {
+    queries: {
+      feed: [
+        { content: "hello" },
+        { content: "world" },
+      ],
+    },
+  };
+  expect(resolveReference("queries.feed[1].content", scope)).toBe("world");
 });
 
-test("resolveDollar returns suffix metadata", () => {
-  const result = resolveDollar("$profile.picture?w=48", { "$profile": { picture: "https://example/p.png" } });
-  expect(result).toEqual({ value: "https://example/p.png", suffix: "?w=48" });
+test("resolveReference falls back to globals", () => {
+  const scope = {
+    globals: {
+      user: { pubkey: "abc" },
+    },
+  };
+  expect(resolveReference("user.pubkey", scope)).toBe("abc");
 });
