@@ -109,6 +109,12 @@ export function AppView({ id }: { id: string }) {
 
   const EMPTY: Record<string, any> = useMemo(() => ({}), []);
   const queriesForWindow = rawScalars ?? EMPTY;
+  const hasLoadedQueries = useMemo(() => {
+    if (!compiled?.meta) return true
+    const queryKeys = Object.keys(compiled.meta).filter((key) => key.startsWith('$'))
+    if (queryKeys.length === 0) return true
+    return queryKeys.some((key) => rawScalars && rawScalars[key] !== undefined)
+  }, [compiled?.meta, rawScalars])
 
   if (compileError) {
     return (
@@ -126,7 +132,11 @@ export function AppView({ id }: { id: string }) {
 
   return (
     <div className="max-h-[90vh] overflow-y-auto">
-      <RenderNodes nodes={nodes} globals={globals} windowId={id} queries={queriesForWindow} debug={debug} />
+      {!hasLoadedQueries ? (
+        <div className="italic text-sm text-gray-600 p-4">Loading…</div>
+      ) : (
+        <RenderNodes nodes={nodes} globals={globals} windowId={id} queries={queriesForWindow} debug={debug} />
+      )}
     </div>
   );
 }

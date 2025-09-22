@@ -10,7 +10,7 @@ export function AppSwitcherPanel() {
   const openWindow = useSetAtom(openWindowAtom)
   const items = useMemo(() => Object.entries(docs).filter(([id]) => id !== 'apps').map(([id, doc]) => ({ id, meta: getDocMeta(doc) })), [docs])
   return (
-    <div className="flex gap-3 items-end">
+    <div className="flex gap-3 items-end min-w-[200px]">
       {items.map(({ id, meta }) => {
         const icon = meta?.icon && iconRegistry[meta.icon] || iconRegistry['folder.png']
         return (
