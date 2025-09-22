@@ -116,6 +116,15 @@ describe("compiler", () => {
     const decompiled = decompile(compiled);
     expect(decompiled).toContain("```each.start");
   });
+
+  test("button payload retains moustache templates", () => {
+    const md = `---\nname: Button\n---\n\n\`\`\`button\ntext: Install\naction: "@install_app"\npayload:\n  naddr: "{{ $app.0.naddr }}"\n\`\`\`\n`;
+    const compiled = compileMarkdownDoc(md);
+    const button = compiled.ast.find(n => n.type === "button");
+    expect(button?.data?.payload?.naddr).toBe('{{ $app.0.naddr }}');
+    const decompiled = decompile(compiled);
+    expect(decompiled).toContain('{{ $app.0.naddr }}');
+  });
 });
 
 function astContainsImageNode(ast: any): boolean {

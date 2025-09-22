@@ -102,26 +102,34 @@ const flush = () => {
       const info = langRaw.toLowerCase();
       if (info === "button") {
         flush();
-        const data = safeParseYamlBlock((t.value || "").trim());
+        const rawBlock = (t.value || "").trim();
+        const parsed = safeParseYamlBlock(rawBlock);
+        const data = restoreTemplateData(parsed, templates.map);
         pushNode({ id: genId(), type: "button", data });
         continue;
       }
       if (info === "input") {
         flush();
-        const data = safeParseYamlBlock((t.value || "").trim());
+        const rawBlock = (t.value || "").trim();
+        const parsed = safeParseYamlBlock(rawBlock);
+        const data = restoreTemplateData(parsed, templates.map);
         pushNode({ id: genId(), type: "input", data });
         continue;
       }
       if (info === "markdown-editor" || info === "markdown_editor") {
         flush();
-        const data = safeParseYamlBlock((t.value || "").trim());
+        const rawBlock = (t.value || "").trim();
+        const parsed = safeParseYamlBlock(rawBlock);
+        const data = restoreTemplateData(parsed, templates.map);
         pushNode({ id: genId(), type: "markdown_editor", data });
         continue;
       }
       if (info === "hstack start" || info === "hstack.start") {
         flush();
         const raw = (t.value || "").trim();
-        const data = raw ? sanitizeStackConfig(safeParseYamlBlock(raw)) : undefined;
+        const parsed = raw ? safeParseYamlBlock(raw) : undefined;
+        const restored = parsed !== undefined ? restoreTemplateData(parsed, templates.map) : undefined;
+        const data = restored ? sanitizeStackConfig(restored) : undefined;
         const node: UiNode = { id: genId(), type: "hstack", children: [] };
         if (data) node.data = data;
         pushNode(node);
@@ -131,7 +139,9 @@ const flush = () => {
       if (info === "vstack start" || info === "vstack.start") {
         flush();
         const raw = (t.value || "").trim();
-        const data = raw ? sanitizeStackConfig(safeParseYamlBlock(raw)) : undefined;
+        const parsed = raw ? safeParseYamlBlock(raw) : undefined;
+        const restored = parsed !== undefined ? restoreTemplateData(parsed, templates.map) : undefined;
+        const data = restored ? sanitizeStackConfig(restored) : undefined;
         const node: UiNode = { id: genId(), type: "vstack", children: [] };
         if (data) node.data = data;
         pushNode(node);
@@ -140,7 +150,9 @@ const flush = () => {
       }
       if (info === "each" || info === "each start" || info === "each.start") {
         flush();
-        const data = safeParseYamlBlock((t.value || "").trim());
+        const rawBlock = (t.value || "").trim();
+        const parsed = safeParseYamlBlock(rawBlock);
+        const data = restoreTemplateData(parsed, templates.map);
         let source = String((data?.from ?? data?.source) || '$items');
         let as = String(data?.as || 'item');
         if (as.startsWith('$')) as = as.slice(1);
@@ -340,6 +352,19 @@ function restoreTemplateText(text: string, map: Map<string, string>): string {
     }
   }
   return out;
+}
+
+function restoreTemplateData<T>(value: T, map: Map<string, string>): T {
+  if (typeof value === 'string') return restoreTemplateText(value, map) as unknown as T;
+  if (Array.isArray(value)) return value.map(item => restoreTemplateData(item, map)) as unknown as T;
+  if (value && typeof value === 'object') {
+    const out: Record<string, any> = {};
+    for (const [key, val] of Object.entries(value as any)) {
+      out[key] = restoreTemplateData(val, map);
+    }
+    return out as unknown as T;
+  }
+  return value;
 }
 
 function nodeContainsTemplateDelimiter(node: any): boolean {
