@@ -61,7 +61,7 @@ export function compileMarkdownDoc(md: string): CompiledDoc {
     }
   }
   const templates = maskTemplatePlaceholders(source)
-  source = templates.masked
+  source = ensureBlankLineBeforeFences(templates.masked)
   const mdast = markdown.block.parse(source);
   const tokens = Array.isArray(mdast) ? mdast : [mdast];
   const parsed = parseFrontmatter(tokens);
@@ -365,6 +365,20 @@ function restoreTemplateData<T>(value: T, map: Map<string, string>): T {
     return out as unknown as T;
   }
   return value;
+}
+
+function ensureBlankLineBeforeFences(source: string): string {
+  const lines = source.split(/\r?\n/);
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const isFence = line.trimStart().startsWith('```');
+    if (isFence && out.length > 0 && out[out.length - 1].trim() !== '') {
+      out.push('');
+    }
+    out.push(line);
+  }
+  return out.join('\n');
 }
 
 function nodeContainsTemplateDelimiter(node: any): boolean {

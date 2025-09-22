@@ -125,6 +125,15 @@ describe("compiler", () => {
     const decompiled = decompile(compiled);
     expect(decompiled).toContain('{{ $app.0.naddr }}');
   });
+
+  test("ensure blank line before fences is auto-inserted", () => {
+    const md = `---\nname: Fence\n---\n\n\`\`\`vstack.start\n\`\`\`\n{{ $feed.0.content }}\n\`\`\`vstack.end\n\`\`\`\n`;
+    const compiled = compileMarkdownDoc(md);
+    const markdownNodes = collectNodesOfType(compiled.ast, 'markdown');
+    expect(markdownNodes.length).toBeGreaterThan(0);
+    expect(markdownNodes[0]?.text).toContain('{{ $feed.0.content }}');
+    expect(markdownNodes[0]?.text).not.toContain('vstack.end');
+  });
 });
 
 function astContainsImageNode(ast: any): boolean {
