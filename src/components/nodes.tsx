@@ -24,6 +24,62 @@ function interpolateText(text: string, globals: any, queries: Record<string, any
   return interp(text, { globals, queries });
 }
 
+function isLikelyId(value: string): boolean {
+  return /^[0-9a-f]{64}$/i.test(value) || value.startsWith('naddr1') || value.startsWith('note1')
+}
+
+function extractStableId(value: any, seen: WeakSet<object>): string | null {
+  if (value == null) return null
+  if (typeof value === 'string') return isLikelyId(value) ? value : null
+  if (typeof value !== 'object') return null
+  if (seen.has(value)) return null
+  seen.add(value)
+
+  const candidate = (value as any).id ?? (value as any).naddr ?? (value as any).event?.id
+  if (typeof candidate === 'string' && candidate.length > 0) return candidate
+
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const nested = extractStableId(entry, seen)
+      if (nested) return nested
+    }
+  } else {
+    for (const entry of Object.values(value)) {
+      if (typeof entry === 'string') {
+        if (isLikelyId(entry)) return entry
+      } else if (entry && typeof entry === 'object') {
+        const nested = extractStableId(entry, seen)
+        if (nested) return nested
+      }
+    }
+  }
+  return null
+}
+
+function hashObject(value: any): string {
+  try {
+    const json = JSON.stringify(value)
+    let hash = 0
+    for (let i = 0; i < json.length; i++) {
+      hash = (hash * 31 + json.charCodeAt(i)) | 0
+    }
+    return Math.abs(hash).toString(36)
+  } catch {
+    return ''
+  }
+}
+
+function deriveLoopKey(nodeId: string | undefined, item: any, index: number): string {
+  const base = nodeId ? String(nodeId) : 'each'
+  const stableId = extractStableId(item, new WeakSet())
+  if (stableId) return `${base}-${stableId}`
+  // fall back to hashing the payload so React doesn't thrash DOM nodes when
+  // new posts arrive mid-list (e.g. live feeds)
+  const hashed = hashObject(item)
+  if (hashed) return `${base}-${hashed}`
+  return `${base}-idx-${index}`
+}
+
 function MarkdownNode({ n, globals, queries }: { n: Node; globals: any; queries: Record<string, any> }) {
   const deps = useMemo(() => {
     const refs = n.refs || [];
@@ -245,8 +301,9 @@ function EachNode({ node, globals, windowId, queries, debug = false }: { node: N
           [`${asName}Index`]: index,
           [`${dollarAlias}Index`]: index,
         };
+        const stableKey = deriveLoopKey(node.id, item, index);
         return (
-          <Fragment key={`${node.id || 'each'}-${index}`}>
+          <Fragment key={stableKey}>
             <RenderNodes
               nodes={node.children || []}
               globals={loopGlobals}

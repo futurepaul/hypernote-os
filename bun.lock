@@ -5,7 +5,7 @@
       "name": "bun-react-template",
       "dependencies": {
         "bun-plugin-tailwind": "^0.0.15",
-        "hypersauce": "git+https://github.com/futurepaul/hypersauce.git",
+        "hypersauce": "git+https://github.com/futurepaul/hypersauce.git#830e340",
         "jotai": "^2.9.3",
         "nostr-tools": "^2.7.2",
         "overtype": "^1.2.6",
@@ -63,7 +63,7 @@
 
     "hash-sum": ["hash-sum@2.0.0", "", {}, "sha512-WdZTbAByD+pHfl/g9QSsBIIwy8IT+EsPiKDs0KNX+zSHhdDLFKdZu0BQHljvO+0QI/BasbMSUa8wYNCZTvhslg=="],
 
-    "hypersauce": ["hypersauce@github:futurepaul/hypersauce#b258cf1", { "dependencies": { "@types/ws": "^8.18.1", "applesauce-core": "^3.1.0", "applesauce-loaders": "^3.1.0", "applesauce-relay": "^3.1.0", "nostr-idb": "^2.4.0", "nostr-tools": "^2.16.2", "rxjs": "^7.8.2", "ws": "^8.18.3" }, "peerDependencies": { "typescript": "^5" } }, "futurepaul-hypersauce-b258cf1"],
+    "hypersauce": ["hypersauce@github:futurepaul/hypersauce#830e340", { "dependencies": { "@types/ws": "^8.18.1", "applesauce-core": "^3.1.0", "applesauce-loaders": "^3.1.0", "applesauce-relay": "^3.1.0", "nostr-idb": "^2.4.0", "nostr-tools": "^2.16.2", "rxjs": "^7.8.2", "ws": "^8.18.3" }, "peerDependencies": { "typescript": "^5" } }, "futurepaul-hypersauce-830e340"],
 
     "idb": ["idb@8.0.3", "", {}, "sha512-LtwtVyVYO5BqRvcsKuB2iUMnHwPVByPCXFXOpuU96IZPPoPN6xjOGxZQ74pgSVVLQWtUOYgyeL4GE98BY5D3wg=="],
 
