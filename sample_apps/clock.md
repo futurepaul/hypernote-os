@@ -5,4 +5,4 @@ hypernote:
 
 what a cool clock!
 
-The time is `{{ time.now }}`.
+The time is `{{ time.now | format_date }}`.

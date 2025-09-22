@@ -133,7 +133,7 @@ export const timeNowAtom = atom<number>(Math.floor(Date.now() / 1000))
 // Only subscribe to global time for windows that reference $time.now
 export const windowTimeAtom = atomFamily((id: string) => atom((get) => {
   const doc = get(docAtom(id))
-  const usesTime = /{{\s*\$time\.now\s*}}/.test(doc)
+  const usesTime = /{{[^}]*\b(?:\$time\.now|time\.now)\b[^}]*}}/.test(doc)
   return usesTime ? get(timeNowAtom) : 0
 }))
 
