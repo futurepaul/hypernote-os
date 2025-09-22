@@ -2,7 +2,7 @@ import { useMemo, useEffect, useRef } from "react";
 import { compileMarkdownDoc, type UiNode } from "../compiler";
 import { useAtomValue, useSetAtom } from 'jotai'
 import { windowScalarsAtom } from '../state/queriesAtoms'
-import { docAtom, userAtom, relaysAtom, windowTimeAtom, debugAtom } from '../state/appAtoms'
+import { docAtom, userAtom, relaysAtom, windowTimeAtom, debugAtom, compiledDocAtom } from '../state/appAtoms'
 import { formsAtom } from '../state/formsAtoms'
 import { queryRuntime } from '../queries/runtime'
 import { docActionsAtom, buildDocActionMap } from '../state/actions'
@@ -11,17 +11,10 @@ import { RenderNodes } from './nodes'
 export function AppView({ id }: { id: string }) {
   // Select only the doc text for this window to avoid global re-renders
   const doc = useAtomValue(docAtom(id)) || "";
+  const { doc: compiled, error: compileError } = useAtomValue(compiledDocAtom(id));
   const docActionsAtomRef = useMemo(() => docActionsAtom(id), [id])
   const setDocActions = useSetAtom(docActionsAtomRef)
-  const { compiled, error: compileError } = useMemo(() => {
-    try {
-      return { compiled: compileMarkdownDoc(doc), error: null as Error | null };
-    } catch (err) {
-      console.warn(`[Compile] ${id} failed`, err);
-      return { compiled: null, error: err instanceof Error ? err : new Error(String(err)) };
-    }
-  }, [doc]);
-  const nodes = useMemo(() => (compiled?.ast as Node[]) || [], [compiled]);
+  const nodes = useMemo(() => (compiled?.ast ?? []) as UiNode[], [compiled]);
 
   useEffect(() => {
     if (!compiled || compileError) {
@@ -36,7 +29,7 @@ export function AppView({ id }: { id: string }) {
   }, [compiled, compileError, setDocActions])
 
   // Detect if this document references $time.now; if not, don't subscribe to time updates
-  const usesTime = useMemo(() => /{{\s*\$time\.now\s*}}/.test(doc), [doc]);
+  const usesTime = useMemo(() => astUsesGlobal(nodes, 'time'), [nodes]);
 
   // Select only the slices we need for this window
   const globalsUser = useAtomValue(userAtom);
@@ -118,6 +111,20 @@ export function AppView({ id }: { id: string }) {
   }
 
   return <RenderNodes nodes={nodes} globals={globals} windowId={id} queries={queriesForWindow} pending={pendingMap} debug={debug} />;
+}
+
+function astUsesGlobal(nodes: UiNode[], target: string): boolean {
+  if (!nodes || !nodes.length) return false;
+  const queue = [...nodes];
+  while (queue.length) {
+    const node = queue.pop();
+    if (!node) continue;
+    if (node.deps?.globals?.includes(target)) return true;
+    if (Array.isArray((node as any).children)) {
+      queue.push(...((node.children as UiNode[]) || []));
+    }
+  }
+  return false;
 }
 
 export function parseFrontmatterName(doc: string): string | undefined {

@@ -1,6 +1,7 @@
 import { atom } from 'jotai'
 import { atomFamily } from 'jotai/utils'
 import { getInitialDocs } from '../state/docs'
+import { compileMarkdownDoc, type CompiledDoc } from '../compiler'
 
 type Layout = { x: number; y: number; z: number }
 
@@ -80,6 +81,31 @@ export const docsAtom = atom<Record<string, string>>(getInitialDocs())
 // Select a single doc by id to avoid re-renders from unrelated doc changes
 export const docAtom = atomFamily((id: string) => atom((get) => (get(docsAtom)[id] || '')))
 export const editorSelectionAtom = atom<string>(ALL_DOCS[0] || '')
+
+type CompiledDocState = { doc: CompiledDoc | null; error: Error | null }
+
+const compiledDocCache = new Map<string, { source: string; state: CompiledDocState }>()
+
+function compileWithCache(id: string, source: string): CompiledDocState {
+  const cached = compiledDocCache.get(id)
+  if (cached && cached.source === source) return cached.state
+  try {
+    const doc = compileMarkdownDoc(source)
+    const state: CompiledDocState = { doc, error: null }
+    compiledDocCache.set(id, { source, state })
+    return state
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error(String(err))
+    const state: CompiledDocState = { doc: null, error }
+    compiledDocCache.set(id, { source, state })
+    return state
+  }
+}
+
+export const compiledDocAtom = atomFamily((id: string) => atom<CompiledDocState>((get) => {
+  const source = get(docAtom(id)) || ''
+  return compileWithCache(id, source)
+}))
 
 // Track which windows are open (rendered). Initialized with all doc ids.
 const openWindowsBaseAtom = atom<string[]>(initialOpen)
