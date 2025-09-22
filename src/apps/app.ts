@@ -57,7 +57,7 @@ Use the app switcher to activate windows.
 `,
   'app-store': `---
 name: App Store
-icon: folder.png
+icon: library.png
 "$apps":
   kinds: [32616]
   "#t": ["hypernote-application"]
@@ -121,7 +121,7 @@ Edit app documents on the right; click Save to persist.
 `,
   system: `---
 name: System Menu
-icon: folder.png
+icon: settings.png
 ---
 System-wide actions.
 `,
