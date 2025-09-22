@@ -1,30 +1,19 @@
 import { useSetAtom, useAtomValue } from 'jotai'
-import { bringWindowToFrontAtom, debugAtom, openWindowAtom, relaysAtom, userAtom } from '../state/appAtoms'
+import { bringWindowToFrontAtom, debugAtom, openWindowAtom, openWindowsAtom, relaysAtom, userAtom, editorSelectionAtom } from '../state/appAtoms'
 import { docsAtom } from '../state/appAtoms'
 import { installByNaddr } from '../services/apps'
+import { clearUserDocs, getDefaultDocs, loadUserDocs, saveUserDocs } from '../state/docs'
 
 export function SystemMenuPanel() {
   const setDocs = useSetAtom(docsAtom)
   const openWin = useSetAtom(openWindowAtom)
+  const setOpenWindows = useSetAtom(openWindowsAtom)
   const bringToFront = useSetAtom(bringWindowToFrontAtom)
   const relays = useAtomValue(relaysAtom)
   const setUser = useSetAtom(userAtom)
   const debug = useAtomValue(debugAtom)
   const setDebug = useSetAtom(debugAtom)
-
-  async function login() {
-    try {
-      const { getDefaultStore } = await import('jotai')
-      const { hypersauceClientAtom } = await import('../state/hypersauce')
-      const client = getDefaultStore().get(hypersauceClientAtom) as any
-      if (!client) throw new Error('Hypersauce client not initialized')
-      const { pubkey } = await client.login()
-      setUser(u => ({ ...u, pubkey }))
-      alert('Logged in as ' + pubkey.slice(0,8) + '…')
-    } catch (e) {
-      alert('Login failed: ' + (e as any)?.message)
-    }
-  }
+  const setEditorSelection = useSetAtom(editorSelectionAtom)
 
   async function addApp() {
     const naddr = prompt('Paste app naddr:')?.trim()
@@ -38,24 +27,50 @@ export function SystemMenuPanel() {
     }
   }
 
-  function newDraft() {
-    const id = prompt('New draft id:', 'my-draft')?.trim()
+  function createNewApp() {
+    const id = prompt('New app id (letters, numbers, dashes):', 'my-app')?.trim()
     if (!id) return
-    const template = `---\nname: ${id}\nicon: folder.png\n---\nHello from ${id}.\n`
-    setDocs(d => ({ ...d, [id]: template }))
-    openWin('editor'); bringToFront('editor')
+    if (!/^[a-z0-9\-]+$/i.test(id)) { alert('Invalid id'); return }
+    setDocs(prev => {
+      if (prev[id]) {
+        alert('An app with that id already exists')
+        return prev
+      }
+      const template = `---\nname: ${id}\nicon: folder.png\n---\nHello from ${id}.\n`
+      const next = { ...prev, [id]: template }
+      const userDocs = loadUserDocs()
+      saveUserDocs({ ...userDocs, [id]: template })
+      setEditorSelection(id)
+      openWin('editor'); bringToFront('editor')
+      try { openWin(id); bringToFront(id) } catch {}
+      return next
+    })
   }
 
-  function openEditor() { openWin('editor'); bringToFront('editor') }
   function toggleDebug() { setDebug(v => !v) }
+
+  function resetWorkspace() {
+    if (!confirm('Reset workspace to defaults? This will remove your local apps.')) return
+    clearUserDocs()
+    const base = getDefaultDocs()
+    setDocs(base)
+    setOpenWindows(['apps'])
+    setEditorSelection(Object.keys(base).find(id => !['apps','editor','system'].includes(id)) || '')
+    setUser(u => ({ ...u, pubkey: null, profile: undefined }))
+    bringToFront('apps')
+  }
+
+  function logout() {
+    window.location.reload()
+  }
 
   return (
     <div className="flex flex-col gap-2 w-56">
-      <button className="px-2 py-1 bg-[var(--win-bg)] border border-[var(--bevel-dark)] shadow-[inset_-1px_-1px_0_0_var(--bevel-dark),inset_1px_1px_0_0_var(--bevel-light)] hover:brightness-105" onClick={login}>Login (NIP‑07)</button>
+      <button className="px-2 py-1 bg-[var(--win-bg)] border border-[var(--bevel-dark)] shadow-[inset_-1px_-1px_0_0_var(--bevel-dark),inset_1px_1px_0_0_var(--bevel-light)] hover:brightness-105" onClick={createNewApp}>Create New App</button>
       <button className="px-2 py-1 bg-[var(--win-bg)] border border-[var(--bevel-dark)] shadow-[inset_-1px_-1px_0_0_var(--bevel-dark),inset_1px_1px_0_0_var(--bevel-light)] hover:brightness-105" onClick={addApp}>Add App (naddr)</button>
-      <button className="px-2 py-1 bg-[var(--win-bg)] border border-[var(--bevel-dark)] shadow-[inset_-1px_-1px_0_0_var(--bevel-dark),inset_1px_1px_0_0_var(--bevel-light)] hover:brightness-105" onClick={newDraft}>New Draft</button>
-      <button className="px-2 py-1 bg-[var(--win-bg)] border border-[var(--bevel-dark)] shadow-[inset_-1px_-1px_0_0_var(--bevel-dark),inset_1px_1px_0_0_var(--bevel-light)] hover:brightness-105" onClick={openEditor}>Open Editor</button>
       <button className="px-2 py-1 bg-[var(--win-bg)] border border-[var(--bevel-dark)] shadow-[inset_-1px_-1px_0_0_var(--bevel-dark),inset_1px_1px_0_0_var(--bevel-light)] hover:brightness-105" onClick={toggleDebug}>{debug ? 'Disable' : 'Enable'} Debug Logs</button>
+      <button className="px-2 py-1 bg-[var(--win-bg)] border border-[var(--bevel-dark)] shadow-[inset_-1px_-1px_0_0_var(--bevel-dark),inset_1px_1px_0_0_var(--bevel-light)] hover:brightness-105" onClick={resetWorkspace}>Reset Workspace</button>
+      <button className="px-2 py-1 bg-[var(--win-bg)] border border-[var(--bevel-dark)] shadow-[inset_-1px_-1px_0_0_var(--bevel-dark),inset_1px_1px_0_0_var(--bevel-light)] hover:brightness-105" onClick={logout}>Logout</button>
     </div>
   )
 }

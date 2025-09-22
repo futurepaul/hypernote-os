@@ -63,6 +63,7 @@ const ALL_DOCS = Object.keys(getInitialDocs())
 const PERSISTED_DEFAULTS = ['apps']
 const initialLayout: Record<string, Layout> = loadLayout() || computeDefaultLayout(ALL_DOCS)
 const initialZCounter = Math.max(0, ...Object.values(initialLayout).map(l => l.z)) + 1
+const initialActiveWindow = initialOpen[0] ?? PERSISTED_DEFAULTS[0] ?? null
 
 const windowLayoutBaseAtom = atom<Record<string, Layout>>(initialLayout)
 export const windowLayoutAtom = atom(
@@ -96,10 +97,17 @@ export const openWindowsAtom = atom(
       normalized.push(id)
     }
     if (normalized.length === 0) {
-      for (const id of PERSISTED_DEFAULTS) if (!seen.has(id)) normalized.push(id)
+      for (const id of PERSISTED_DEFAULTS) if (!seen.has(id)) {
+        normalized.push(id)
+        seen.add(id)
+      }
     }
     set(openWindowsBaseAtom, normalized)
     saveOpenWindows(normalized)
+    const active = get(activeWindowAtom)
+    if (!active || !normalized.includes(active)) {
+      set(activeWindowAtom, normalized[0] ?? null)
+    }
   }
 )
 export const isWindowOpenAtom = atomFamily((id: string) => atom((get) => (get(openWindowsAtom).includes(id))))
@@ -155,7 +163,7 @@ export const windowZAtom = atomFamily((id: string) => atom(
 ))
 
 export const zCounterAtom = atom<number>(initialZCounter)
-export const activeWindowAtom = atom<string | null>(null)
+export const activeWindowAtom = atom<string | null>(initialActiveWindow)
 
 export const bringWindowToFrontAtom = atom(null, (get, set, id: string) => {
   const next = (get(zCounterAtom) as number) + 1

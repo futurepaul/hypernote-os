@@ -2,30 +2,30 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import OverType from "overtype";
 import { useAtom, useSetAtom, useAtomValue } from 'jotai'
-import { docsAtom, openWindowsAtom, openWindowAtom, bringWindowToFrontAtom, relaysAtom, editorSelectionAtom } from '../state/appAtoms'
+import { docsAtom, openWindowAtom, bringWindowToFrontAtom, relaysAtom, editorSelectionAtom } from '../state/appAtoms'
 import { parseFrontmatterName } from "../state/docs";
-import { getDefaultDocs, saveUserDocs, loadUserDocs, clearUserDocs, isDefaultDocId } from '../state/docs'
+import { getDefaultDocs, saveUserDocs, loadUserDocs, isDefaultDocId } from '../state/docs'
 import { compileMarkdownDoc } from '../compiler'
 import { publishApp, installByNaddr } from '../services/apps'
 
 export function EditorPanel() {
   const [docs, setDocs] = useAtom(docsAtom)
   const openWin = useSetAtom(openWindowAtom)
-  const setOpenWindows = useSetAtom(openWindowsAtom)
   const bringToFront = useSetAtom(bringWindowToFrontAtom)
   const relays = useAtomValue(relaysAtom)
   const builtinOrder = useMemo(() => Object.keys(getDefaultDocs()), [])
   const files = useMemo(() => {
+    const nonEditable = new Set(['apps', 'editor', 'system'])
     const seen = new Set<string>()
     const ordered: string[] = []
     builtinOrder.forEach((id) => {
-      if (docs[id as keyof typeof docs]) {
+      if (docs[id as keyof typeof docs] && !nonEditable.has(id)) {
         ordered.push(id)
         seen.add(id)
       }
     })
     Object.keys(docs).forEach((id) => {
-      if (!seen.has(id)) ordered.push(id)
+      if (!seen.has(id) && !nonEditable.has(id)) ordered.push(id)
     })
     return ordered
   }, [docs, builtinOrder])
@@ -120,23 +120,6 @@ export function EditorPanel() {
     }
   }
 
-  function newDoc() {
-    const id = prompt('New app id (letters, numbers, dashes):', 'my-app')?.trim()
-    if (!id) return
-    if (!/^[a-z0-9\-]+$/i.test(id)) { alert('Invalid id'); return }
-    if (docs[id as keyof typeof docs]) { alert('An app with that id already exists'); return }
-    const template = `---\nname: ${id}\nicon: folder.png\n---\nHello from ${id}.\n`
-    const next = { ...docs, [id]: template }
-    setDocs(next)
-    // Persist new app
-    const userDocs = loadUserDocs()
-    saveUserDocs({ ...userDocs, [id]: template })
-    setCurrent(id)
-    setValue(template)
-    // Open the new window
-    try { openWin(id) } catch {}
-  }
-
   return (
     <div className="flex h-[80vh] w-[820px]">
       {/* Sidebar */}
@@ -162,25 +145,12 @@ export function EditorPanel() {
         {/* Menubar */}
         <div className="flex items-center gap-2 px-2 py-1 bg-[var(--accent)] text-white border-b border-[var(--bevel-dark)]">
           <div className="font-semibold text-sm mr-2">File</div>
-          <button onClick={newDoc} className="px-2 py-0.5 text-sm bg-[var(--win-bg)] text-gray-900 border border-[var(--bevel-dark)] shadow-[inset_-1px_-1px_0_0_var(--bevel-dark),inset_1px_1px_0_0_var(--bevel-light)] hover:brightness-105">New</button>
           <button onClick={save} className="px-2 py-0.5 text-sm bg-[var(--win-bg)] text-gray-900 border border-[var(--bevel-dark)] shadow-[inset_-1px_-1px_0_0_var(--bevel-dark),inset_1px_1px_0_0_var(--bevel-light)] hover:brightness-105">Save</button>
           <button
             onClick={publish}
             disabled={publishing}
             className={`px-2 py-0.5 text-sm border border-[var(--bevel-dark)] shadow-[inset_-1px_-1px_0_0_var(--bevel-dark),inset_1px_1px_0_0_var(--bevel-light)] ${publishing ? 'opacity-70 cursor-not-allowed bg-[var(--chrome-bg)] text-gray-600' : 'bg-[var(--win-bg)] text-gray-900 hover:brightness-105'}`}
           >{publishing ? 'Publishing…' : 'Publish'}</button>
-          <button
-            onClick={() => {
-              if (confirm('Reset to default docs? This will remove your local apps.')) {
-                clearUserDocs()
-                const base = getDefaultDocs()
-                setDocs(base)
-                setCurrent('profile')
-                try { setOpenWindows(Object.keys(base)) } catch {}
-              }
-            }}
-            className="px-2 py-0.5 text-sm bg-[var(--win-bg)] text-gray-900 border border-[var(--bevel-dark)] shadow-[inset_-1px_-1px_0_0_var(--bevel-dark),inset_1px_1px_0_0_var(--bevel-light)] hover:brightness-105"
-          >Reset</button>
           <button
             onClick={() => {
               const blob = new Blob([value], { type: 'text/markdown;charset=utf-8' })

@@ -66,7 +66,7 @@ export function App() {
         if (!doc) return null
         const canEdit = id !== 'editor'
         const isClosable = id !== 'apps'
-        const isEditable = canEdit && id !== 'apps'
+        const isEditable = canEdit && !['apps', 'system'].includes(id)
         return (
           <DraggableWindow
             key={id}
