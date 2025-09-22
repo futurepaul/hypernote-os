@@ -319,10 +319,28 @@ function clearFormFields(windowId: string, keys: Set<string>) {
 
 function normalizeNaddrPayload(payload: any): string | null {
   if (!payload) return null
-  if (typeof payload === 'string') return payload.trim()
+  const extract = (value: unknown): string | null => {
+    if (typeof value !== 'string') return null
+    let out = value.trim()
+    if (!out) return null
+    if (out.startsWith('nostr:')) out = out.slice('nostr:'.length)
+    return out
+  }
+  const normalize = (value: string | null): string | null => {
+    if (!value) return null
+    const lower = value.toLowerCase()
+    if (!/^naddr1[0-9a-z]+$/.test(lower)) {
+      console.warn('[install_app] invalid naddr payload', value)
+      return null
+    }
+    return lower
+  }
+  if (typeof payload === 'string') return normalize(extract(payload))
   if (typeof payload === 'object') {
-    if (typeof payload.naddr === 'string') return payload.naddr.trim()
-    if (typeof payload.value === 'string') return payload.value.trim()
+    const fromNaddr = normalize(extract((payload as any).naddr))
+    if (fromNaddr) return fromNaddr
+    const fromValue = normalize(extract((payload as any).value))
+    if (fromValue) return fromValue
   }
   return null
 }
