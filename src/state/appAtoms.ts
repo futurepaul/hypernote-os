@@ -62,6 +62,7 @@ function saveOpenWindows(ids: string[]) {
 const ALL_DOCS = Object.keys(getInitialDocs())
 const PERSISTED_DEFAULTS = ['apps']
 const initialLayout: Record<string, Layout> = loadLayout() || computeDefaultLayout(ALL_DOCS)
+const initialOpen = loadOpenWindows(PERSISTED_DEFAULTS)
 const initialZCounter = Math.max(0, ...Object.values(initialLayout).map(l => l.z)) + 1
 const initialActiveWindow = initialOpen[0] ?? PERSISTED_DEFAULTS[0] ?? null
 
@@ -81,7 +82,6 @@ export const docAtom = atomFamily((id: string) => atom((get) => (get(docsAtom)[i
 export const editorSelectionAtom = atom<string>(ALL_DOCS[0] || '')
 
 // Track which windows are open (rendered). Initialized with all doc ids.
-const initialOpen = loadOpenWindows(PERSISTED_DEFAULTS)
 const openWindowsBaseAtom = atom<string[]>(initialOpen)
 export const openWindowsAtom = atom(
   get => get(openWindowsBaseAtom),
