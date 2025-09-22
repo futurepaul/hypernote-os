@@ -16,7 +16,7 @@ type StartArgs = {
   onScalars: (scalars: Record<string, any>) => void;
 };
 
-const PENDING_MARKER = Symbol('pending');
+const PENDING_MARKER = '__pending__';
 
 type PendingMap = Record<string, boolean>
 

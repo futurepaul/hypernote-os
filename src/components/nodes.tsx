@@ -287,6 +287,9 @@ function EachNode({ node, globals, windowId, queries, debug = false }: { node: N
   const asName = typeof data.as === 'string' && data.as.length > 0 ? data.as : 'item';
   const listRaw = queries ? queries[source] : undefined;
   const list = Array.isArray(listRaw) ? listRaw : [];
+  if (listRaw === '__pending__') {
+    return <div className="italic text-sm text-gray-600">Loading…</div>;
+  }
   const pendingMap = (queries && typeof queries === 'object') ? (queries.__pending as Record<string, boolean> | undefined) : undefined;
   if (pendingMap && pendingMap[source]) {
     return <div className="italic text-sm text-gray-600">Loading…</div>;
