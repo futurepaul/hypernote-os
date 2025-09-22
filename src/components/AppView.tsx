@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useRef, useState } from "react";
+import { useMemo, useEffect, useRef } from "react";
 import { compileMarkdownDoc, type UiNode } from "../compiler";
 import { useAtomValue, useSetAtom } from 'jotai'
 import { windowScalarsAtom } from '../state/queriesAtoms'
@@ -109,26 +109,6 @@ export function AppView({ id }: { id: string }) {
 
   const EMPTY: Record<string, any> = useMemo(() => ({}), []);
   const queriesForWindow = rawScalars ?? EMPTY;
-  const queryKeys = useMemo(() => {
-    if (!compiled?.meta) return [] as string[]
-    return Object.keys(compiled.meta).filter((key) => key.startsWith('$'))
-  }, [compiled?.meta])
-  const [queriesLoaded, setQueriesLoaded] = useState(() => queryKeys.length === 0)
-
-  useEffect(() => {
-    setQueriesLoaded(queryKeys.length === 0)
-  }, [queryKeys.join('|')])
-
-  useEffect(() => {
-    if (queriesLoaded) return
-    if (!rawScalars) return
-    for (const key of queryKeys) {
-      if (rawScalars[key] !== undefined) {
-        setQueriesLoaded(true)
-        break
-      }
-    }
-  }, [rawScalars, queryKeys, queriesLoaded])
 
   if (compileError) {
     return (
@@ -144,15 +124,7 @@ export function AppView({ id }: { id: string }) {
     return <div className="p-4 text-sm text-red-800 bg-red-50 border border-red-200 rounded">Document unavailable.</div>;
   }
 
-  return (
-    <div className="max-h-[90vh] overflow-y-auto">
-      {!queriesLoaded ? (
-        <div className="italic text-sm text-gray-600 p-4">Loading…</div>
-      ) : (
-        <RenderNodes nodes={nodes} globals={globals} windowId={id} queries={queriesForWindow} debug={debug} />
-      )}
-    </div>
-  );
+  return <RenderNodes nodes={nodes} globals={globals} windowId={id} queries={queriesForWindow} debug={debug} />;
 }
 
 export function parseFrontmatterName(doc: string): string | undefined {

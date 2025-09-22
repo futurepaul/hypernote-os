@@ -69,17 +69,13 @@ export function App() {
         const isEditable = canEdit && !['apps', 'system'].includes(id)
         const contentClass = id === 'editor'
           ? "bg-[var(--win-bg)] text-sm text-gray-900 p-0"
-          : id === 'apps'
-            ? "bg-[var(--win-bg)] p-3 text-sm text-gray-900 min-w-[200px]"
-            : undefined
-        const style = id === 'apps' ? { minWidth: '200px' } : undefined
+          : "bg-[var(--win-bg)] p-3 text-sm text-gray-900 max-h-[90vh] overflow-y-auto min-w-[200px]"
         return (
           <DraggableWindow
             key={id}
             id={id}
             title={parseFrontmatterName(doc) || id}
             contentClassName={contentClass}
-            style={style}
             onClose={isClosable ? () => closeWindow(id) : undefined}
             onEdit={isEditable ? () => handleEdit(id) : undefined}
           >
