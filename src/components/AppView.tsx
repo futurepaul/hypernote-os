@@ -34,7 +34,7 @@ export function AppView({ id }: { id: string }) {
   // Select only the slices we need for this window
   const globalsUser = useAtomValue(userAtom);
   const timeNow = useAtomValue(windowTimeAtom(id));
-  const rawScalars = useAtomValue(windowScalarsAtom(id));
+  const querySnapshots = useAtomValue(windowScalarsAtom(id));
   const forms = useAtomValue(formsAtom(id))
   const globals = useMemo(() => {
     const timeObj = { now: timeNow };
@@ -68,8 +68,8 @@ export function AppView({ id }: { id: string }) {
     if (debug) console.log(`[Cause] ${id}: user.pubkey`, globalsUser?.pubkey);
   }, [globalsUser?.pubkey, debug]);
   useEffect(() => {
-    if (debug) console.log(`[Cause] ${id}: queries`, Object.keys(rawScalars || {}));
-  }, [rawScalars, debug]);
+    if (debug) console.log(`[Cause] ${id}: queries`, Object.keys(querySnapshots || {}));
+  }, [querySnapshots, debug]);
 
   // No artificial tick; re-render comes from globals/$time.now store updates
 
@@ -91,10 +91,25 @@ export function AppView({ id }: { id: string }) {
     return () => queryRuntime.stop(id)
   }, [id, compiled, compileError, globals.user.pubkey, relays])
 
-  const EMPTY_QUERIES: Record<string, any> = useMemo(() => ({}), []);
-  const EMPTY_PENDING: Record<string, boolean> = useMemo(() => ({}), []);
-  const queriesForWindow = (rawScalars?.queries as Record<string, any> | undefined) ?? EMPTY_QUERIES;
-  const pendingMap = (rawScalars?.__pending as Record<string, boolean> | undefined) ?? EMPTY_PENDING;
+  const EMPTY_DATA: Record<string, any> = useMemo(() => ({}), []);
+  const EMPTY_STATUS: Record<string, QueryStatus> = useMemo(() => ({} as Record<string, QueryStatus>), []);
+  const queriesForWindow = useMemo(() => {
+    if (!querySnapshots) return EMPTY_DATA;
+    const out: Record<string, any> = {};
+    for (const [name, snapshot] of Object.entries(querySnapshots)) {
+      out[name] = snapshot?.data;
+    }
+    return out;
+  }, [querySnapshots, EMPTY_DATA]);
+
+  const queryStatusMap = useMemo(() => {
+    if (!querySnapshots) return EMPTY_STATUS;
+    const out: Record<string, QueryStatus> = {};
+    for (const [name, snapshot] of Object.entries(querySnapshots)) {
+      out[name] = snapshot?.status ?? 'loading';
+    }
+    return out;
+  }, [querySnapshots, EMPTY_STATUS]);
 
   if (compileError) {
     return (
@@ -110,8 +125,10 @@ export function AppView({ id }: { id: string }) {
     return <div className="p-4 text-sm text-red-800 bg-red-50 border border-red-200 rounded">Document unavailable.</div>;
   }
 
-  return <RenderNodes nodes={nodes} globals={globals} windowId={id} queries={queriesForWindow} pending={pendingMap} debug={debug} />;
+  return <RenderNodes nodes={nodes} globals={globals} windowId={id} queries={queriesForWindow} statuses={queryStatusMap} debug={debug} />;
 }
+
+type QueryStatus = 'loading' | 'ready' | 'error';
 
 function astUsesGlobal(nodes: UiNode[], target: string): boolean {
   if (!nodes || !nodes.length) return false;

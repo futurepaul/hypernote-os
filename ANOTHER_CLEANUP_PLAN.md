@@ -35,21 +35,22 @@ Validation
 - Performance benchmark: ensure repeated renders no longer trigger redundant compilation work.
 - Tests verifying that storing/retrieving `DocIR` leaves the document unchanged (`compile → schema → serialize → deserialize → render`).
 
-## Workstream 3 — Query Runtime & Observables
+## Workstream 3 — Query Runtime & Observables *(in progress)*
 **Goal:** Remove `$` token munging and bespoke loading sentinels; surface Hypersauce data as raw observables.
 
-Tasks
-1. Drop `resolveDollar`, `normalizeQueryDefinition`, and related `$` translators. The compiler/runtime now emits references like `queries.feed` directly.
-2. Extend Hypersauce to re-export `useObservableMemo` (or equivalent) so `AppView` can subscribe to query streams declaratively.
-3. Refactor `queryRuntime.start` into:
-   - A thin adapter that translates `DocIR.meta.queries` into Hypersauce query specs without timers or sentinel values.
-   - Returns an observable map keyed by query ID, with `{ status: 'loading' | 'error' | 'data', data }` payloads.
-4. Update the renderer (or a small hook) to interpret those observable emissions, rendering "Loading…" when status is `loading` and actual data otherwise.
-5. Remove pending marker/timer logic from `windowScalarsAtom`, replacing it with pure stream state (`{ queries: { id: Observable<QueryResult> } }`).
+Progress summary
+- ✅ `windowScalarsAtom` now stores `{ status, data, error }` snapshots (no more sentinels/timers).
+- ✅ Renderer consumes those snapshots and restores the “Loading…” fallback without flicker.
+- ❌ `$` translators (`normalizeQueryDefinition`, `resolveDollar*`) still exist.
+- ❌ Runtime still pushes snapshot updates manually; observables aren’t exposed to the component layer yet.
+- ❌ No new tests around the observable flow.
 
-Validation
-- Add tests in Hypersauce ensuring `queries.feed` references resolve correctly without `$`.
-- Component tests verifying `each` nodes render loading fallback then data using the observable flow.
+Remaining tasks
+1. Drop `resolveDollar`, `normalizeQueryDefinition`, and related `$` translators so the compiler/runtime stick with `queries.foo` paths end-to-end.
+2. Extend Hypersauce (or add a thin helper) to expose query observables (e.g. via `useObservableMemo`) so `AppView` can subscribe declaratively.
+3. Refactor `queryRuntime.start` into a thin adapter that returns those observables instead of managing timers/state internally.
+4. Update the renderer hook to consume the observable outputs directly (keeping the `{ status, data }` contract for nodes).
+5. Add regression tests covering the observable flow and `$`-free references.
 
 ## Workstream 4 — Actions Architecture
 **Goal:** Clearly separate OS/system actions from app-defined actions while keeping invocation ergonomics consistent.

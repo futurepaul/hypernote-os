@@ -4,7 +4,7 @@
 import { getDefaultStore } from 'jotai'
 import { nip19 } from 'nostr-tools'
 import { hypersauceClientAtom } from '../state/hypersauce'
-import { mergeScalars, windowScalarsAtom } from '../state/queriesAtoms'
+import { windowScalarsAtom, type QuerySnapshot } from '../state/queriesAtoms'
 import type { HypernoteMeta } from '../compiler'
 import { parseReference, resolveReference } from '../interp/reference'
 
@@ -18,36 +18,11 @@ type StartArgs = {
   onScalars: (scalars: Record<string, any>) => void;
 };
 
-const PENDING_MARKER = '__pending__';
-
-type PendingMap = Record<string, boolean>
-
 class QueryRuntime {
   private client: any | null = null;
   private relays: string[] = [];
   private subs = new Map<string, { unsubscribe(): void }>();
   private warnedMissing = false;
-  private pendingTimers = new Map<string, Map<string, ReturnType<typeof setTimeout>>>();
-
-  private clearPending(windowId: string, key: string) {
-    const store = getDefaultStore()
-    const atom = windowScalarsAtom(windowId)
-    const prev = store.get(atom) || {}
-    const pending: PendingMap = { ...(prev.__pending || {}) }
-    if (!pending[key]) return
-    pending[key] = false
-    const nextQueries: Record<string, any> = { ...(prev.queries || {}) }
-    if (nextQueries[key] === PENDING_MARKER) nextQueries[key] = []
-    const next: Record<string, any> = { __pending: pending, queries: nextQueries }
-    const merged = mergeScalars(prev, next)
-    if (merged !== prev) store.set(atom, merged)
-    const timers = this.pendingTimers.get(windowId)
-    if (timers?.has(key)) {
-      clearTimeout(timers.get(key)!)
-      timers.delete(key)
-      if (timers.size === 0) this.pendingTimers.delete(windowId)
-    }
-  }
 
   async ensureClient(relays: string[]): Promise<boolean> {
     const store = getDefaultStore()
@@ -74,11 +49,6 @@ class QueryRuntime {
     if (sub) {
       try { sub.unsubscribe(); } catch {}
       this.subs.delete(windowId);
-    }
-    const timers = this.pendingTimers.get(windowId)
-    if (timers) {
-      for (const timer of timers.values()) clearTimeout(timer)
-      this.pendingTimers.delete(windowId)
     }
   }
 
@@ -122,30 +92,17 @@ class QueryRuntime {
           }
         }
       } catch {}
+
       const store = getDefaultStore()
       const atom = windowScalarsAtom(windowId)
-      const prev = store.get(atom) || {}
-      const pending: PendingMap = { ...(prev.__pending || {}) }
-      const timers = this.pendingTimers.get(windowId) ?? new Map<string, ReturnType<typeof setTimeout>>()
-      const sentinelUpdate: Record<string, any> = {}
+      const prevSnapshots = store.get(atom) || {}
+      const initialSnapshots: Record<string, QuerySnapshot> = { ...prevSnapshots }
       for (const name of queryNames) {
-        pending[name] = true
-        sentinelUpdate[name] = PENDING_MARKER
-        const existingTimer = timers.get(name)
-        if (existingTimer) clearTimeout(existingTimer)
-        const timer = setTimeout(() => {
-          this.clearPending(windowId, name)
-        }, 1500)
-        timers.set(name, timer)
+        if (!initialSnapshots[name]) {
+          initialSnapshots[name] = { status: 'loading', data: [] }
+        }
       }
-      this.pendingTimers.set(windowId, timers)
-      const nextSeed = {
-        ...prev,
-        __pending: pending,
-        queries: { ...(prev.queries || {}), ...sentinelUpdate },
-      }
-      const mergedSeed = mergeScalars(prev, nextSeed)
-      if (mergedSeed !== prev) store.set(atom, mergedSeed)
+      store.set(atom, initialSnapshots)
 
       const sub = this.client
         .runQueryDocumentLive(resolvedDoc, context)
@@ -153,34 +110,33 @@ class QueryRuntime {
           next: (resultMap: Map<string, any>) => {
             const store = getDefaultStore();
             const atom = windowScalarsAtom(windowId);
-            const prevSnapshot = store.get(atom) || {};
-            const pendingSnapshot: PendingMap = { ...(prevSnapshot.__pending || {}) };
-            const windowTimers = this.pendingTimers.get(windowId);
-            const prevQueries: Record<string, any> = { ...(prevSnapshot.queries || {}) };
-            const nextQueries: Record<string, any> = { ...prevQueries };
+            const prevSnapshots = store.get(atom) || {};
+            const nextSnapshots: Record<string, QuerySnapshot> = { ...prevSnapshots };
+            for (const name of queryNames) {
+              if (!nextSnapshots[name]) {
+                nextSnapshots[name] = { status: 'loading', data: [] };
+              }
+            }
             for (const [qid, value] of resultMap) {
               const name = qid.startsWith('$') ? qid.slice(1) : qid;
+              if (!queryNames.includes(name)) continue;
               const rendered = toRenderable(value);
-              if (pendingSnapshot[name] && prevQueries[name] === PENDING_MARKER && Array.isArray(rendered) && rendered.length === 0) {
-                continue;
-              }
-              pendingSnapshot[name] = false;
-              if (windowTimers?.has(name)) {
-                clearTimeout(windowTimers.get(name)!);
-                windowTimers.delete(name);
-              }
-              nextQueries[name] = rendered;
+              nextSnapshots[name] = { status: 'ready', data: rendered };
             }
-            if (windowTimers && windowTimers.size === 0) this.pendingTimers.delete(windowId);
-            const next = { queries: nextQueries, __pending: pendingSnapshot };
-            try {
-              const merged = mergeScalars(prevSnapshot, next);
-              if (merged !== prevSnapshot) store.set(atom, merged);
-            } catch {}
-            onScalars(nextQueries);
+            store.set(atom, nextSnapshots);
+            onScalars(Object.fromEntries(Object.entries(nextSnapshots).map(([k, v]) => [k, v.data])));
           },
-          error: (_e: any) => {
-            // Intentionally swallow; store may add error channel later
+          error: (err: any) => {
+            const store = getDefaultStore();
+            const atom = windowScalarsAtom(windowId);
+            const prevSnapshots = store.get(atom) || {};
+            const nextSnapshots: Record<string, QuerySnapshot> = { ...prevSnapshots };
+            const message = err instanceof Error ? err.message : String(err);
+            for (const name of queryNames) {
+              const prevData = prevSnapshots[name]?.data ?? [];
+              nextSnapshots[name] = { status: 'error', data: prevData, error: message };
+            }
+            store.set(atom, nextSnapshots);
           },
         });
       this.subs.set(windowId, sub);

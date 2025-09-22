@@ -1,12 +1,21 @@
 import { expect, test, describe } from "bun:test";
 import { compileMarkdownDoc, DOC_VERSION } from "./compiler";
-import { defaultApps } from "./apps/app";
 import { decompile } from "./decompiler";
 import { validateDoc } from "./types/doc";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+async function loadMarkdown(name: string) {
+  const path = join(__dirname, `../sample_apps/${name}.md`);
+  return Bun.file(path).text();
+}
 
 describe("compiler", () => {
   test("wallet compiles to AST with hstack and buttons", async () => {
-    const md = defaultApps.wallet;
+    const md = await loadMarkdown("wallet");
     const { ast, meta } = compileMarkdownDoc(md);
     expect(meta.hypernote?.name).toBe("Wallet");
     expect(Array.isArray(ast)).toBe(true);
@@ -26,7 +35,7 @@ describe("compiler", () => {
   });
 
   test("profile compiles modern queries block", async () => {
-    const md = defaultApps.profile;
+    const md = await loadMarkdown("profile");
     const { ast, meta } = compileMarkdownDoc(md);
     expect(meta.hypernote?.name).toBe("Profile");
     const inputs = ast.filter(n => n.type === "input");
@@ -39,8 +48,8 @@ describe("compiler", () => {
     expect(() => compileMarkdownDoc(bad)).toThrow(/HTML is not supported/);
   });
 
-  test("compiled docs expose version and pass schema validation", () => {
-    const doc = compileMarkdownDoc(defaultApps["app-store"]);
+  test("compiled docs expose version and pass schema validation", async () => {
+    const doc = compileMarkdownDoc(await loadMarkdown("app-store"));
     expect(doc.version).toBe(DOC_VERSION);
     expect(() => validateDoc(doc)).not.toThrow();
   });
@@ -64,8 +73,8 @@ describe("compiler", () => {
     expect(buttonNodes.some(n => n.deps?.queries?.includes('feed'))).toBe(true);
   });
 
-  test("validateDoc rejects unexpected node types", () => {
-    const doc = compileMarkdownDoc(defaultApps.wallet);
+  test("validateDoc rejects unexpected node types", async () => {
+    const doc = compileMarkdownDoc(await loadMarkdown("wallet"));
     const mutated = {
       ...doc,
       ast: [{ ...doc.ast[0], type: "unknown" as any }],
@@ -81,8 +90,8 @@ describe("compiler", () => {
     expect(roundtrip.meta.queries?.items?.authors).toEqual(['user.pubkey']);
   });
 
-  test("app store markdown normalizes inline image references", () => {
-    const { ast } = compileMarkdownDoc(defaultApps["app-store"]);
+  test("app store markdown normalizes inline image references", async () => {
+    const { ast } = compileMarkdownDoc(await loadMarkdown("app-store"));
     expect(astContainsImageNode(ast)).toBe(true);
   });
 
