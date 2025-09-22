@@ -1,7 +1,7 @@
-import { useMemo, useEffect, useRef } from "react";
+import { useMemo, useEffect, useRef, useState } from "react";
 import { compileMarkdownDoc, type UiNode } from "../compiler";
 import { useAtomValue, useSetAtom } from 'jotai'
-import { windowScalarsAtom } from '../state/queriesAtoms'
+import { windowQueryStreamsAtom } from '../state/queriesAtoms'
 import { docAtom, userAtom, relaysAtom, windowTimeAtom, debugAtom, compiledDocAtom } from '../state/appAtoms'
 import { formsAtom } from '../state/formsAtoms'
 import { queryRuntime } from '../queries/runtime'
@@ -34,7 +34,7 @@ export function AppView({ id }: { id: string }) {
   // Select only the slices we need for this window
   const globalsUser = useAtomValue(userAtom);
   const timeNow = useAtomValue(windowTimeAtom(id));
-  const querySnapshots = useAtomValue(windowScalarsAtom(id));
+  const queryStreams = useAtomValue(windowQueryStreamsAtom(id));
   const forms = useAtomValue(formsAtom(id))
   const globals = useMemo(() => {
     const timeObj = { now: timeNow };
@@ -68,8 +68,8 @@ export function AppView({ id }: { id: string }) {
     if (debug) console.log(`[Cause] ${id}: user.pubkey`, globalsUser?.pubkey);
   }, [globalsUser?.pubkey, debug]);
   useEffect(() => {
-    if (debug) console.log(`[Cause] ${id}: queries`, Object.keys(querySnapshots || {}));
-  }, [querySnapshots, debug]);
+    if (debug) console.log(`[Cause] ${id}: query streams`, Object.keys(queryStreams || {}));
+  }, [queryStreams, debug]);
 
   // No artificial tick; re-render comes from globals/$time.now store updates
 
@@ -91,25 +91,7 @@ export function AppView({ id }: { id: string }) {
     return () => queryRuntime.stop(id)
   }, [id, compiled, compileError, globals.user.pubkey, relays])
 
-  const EMPTY_DATA: Record<string, any> = useMemo(() => ({}), []);
-  const EMPTY_STATUS: Record<string, QueryStatus> = useMemo(() => ({} as Record<string, QueryStatus>), []);
-  const queriesForWindow = useMemo(() => {
-    if (!querySnapshots) return EMPTY_DATA;
-    const out: Record<string, any> = {};
-    for (const [name, snapshot] of Object.entries(querySnapshots)) {
-      out[name] = snapshot?.data;
-    }
-    return out;
-  }, [querySnapshots, EMPTY_DATA]);
-
-  const queryStatusMap = useMemo(() => {
-    if (!querySnapshots) return EMPTY_STATUS;
-    const out: Record<string, QueryStatus> = {};
-    for (const [name, snapshot] of Object.entries(querySnapshots)) {
-      out[name] = snapshot?.status ?? 'loading';
-    }
-    return out;
-  }, [querySnapshots, EMPTY_STATUS]);
+  const { data: queriesForWindow, statuses: queryStatusMap } = useQuerySnapshotState(queryStreams);
 
   if (compileError) {
     return (
@@ -129,6 +111,55 @@ export function AppView({ id }: { id: string }) {
 }
 
 type QueryStatus = 'loading' | 'ready' | 'error';
+
+function useQuerySnapshotState(streams: Record<string, any> | undefined): { data: Record<string, any>; statuses: Record<string, QueryStatus> } {
+  const [state, setState] = useState<{ data: Record<string, any>; statuses: Record<string, QueryStatus> }>({ data: {}, statuses: {} })
+
+  useEffect(() => {
+    const entries = Object.entries(streams || {})
+    setState(prev => {
+      const nextData: Record<string, any> = {}
+      const nextStatuses: Record<string, QueryStatus> = {}
+      for (const [name] of entries) {
+        nextData[name] = Object.prototype.hasOwnProperty.call(prev.data, name) ? prev.data[name] : []
+        nextStatuses[name] = prev.statuses[name] ?? 'loading'
+      }
+      return { data: nextData, statuses: nextStatuses }
+    })
+
+    if (entries.length === 0) return () => {}
+
+    const subs = entries
+      .map(([name, stream]) => {
+        if (!stream || typeof stream.subscribe !== 'function') return null
+        return stream.subscribe({
+          next: (value: any) => {
+            setState(prev => ({
+              data: { ...prev.data, [name]: value },
+              statuses: { ...prev.statuses, [name]: 'ready' },
+            }))
+          },
+          error: (err: any) => {
+            const message = err instanceof Error ? err.message : String(err)
+            setState(prev => ({
+              data: prev.data,
+              statuses: { ...prev.statuses, [name]: 'error' },
+            }))
+            console.warn('[Hypersauce] query stream error', name, message)
+          },
+        })
+      })
+      .filter(Boolean) as Array<{ unsubscribe(): void }>
+
+    return () => {
+      for (const sub of subs) {
+        try { sub.unsubscribe() } catch {}
+      }
+    }
+  }, [streams])
+
+  return state
+}
 
 function astUsesGlobal(nodes: UiNode[], target: string): boolean {
   if (!nodes || !nodes.length) return false;

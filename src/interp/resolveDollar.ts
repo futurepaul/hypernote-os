@@ -1,3 +1,7 @@
+// TODO DEPRECATED: retained only for downstream packages that still import
+// the legacy `$`-prefixed query helpers. Hypernote OS no longer references
+// these utilities directly; prefer `interp/reference` instead.
+
 export type ResolvedDollar = { value: string; suffix: string } | null;
 
 export function resolveDollar(raw: string, queries: Record<string, any>): ResolvedDollar {

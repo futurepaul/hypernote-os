@@ -4,7 +4,7 @@
 import { getDefaultStore } from 'jotai'
 import { nip19 } from 'nostr-tools'
 import { hypersauceClientAtom } from '../state/hypersauce'
-import { windowScalarsAtom, type QuerySnapshot } from '../state/queriesAtoms'
+import { windowScalarsAtom, windowQueryStreamsAtom } from '../state/queriesAtoms'
 import type { HypernoteMeta } from '../compiler'
 import { parseReference, resolveReference } from '../interp/reference'
 
@@ -21,7 +21,6 @@ type StartArgs = {
 class QueryRuntime {
   private client: any | null = null;
   private relays: string[] = [];
-  private subs = new Map<string, { unsubscribe(): void }>();
   private warnedMissing = false;
 
   async ensureClient(relays: string[]): Promise<boolean> {
@@ -45,11 +44,11 @@ class QueryRuntime {
   }
 
   stop(windowId: string) {
-    const sub = this.subs.get(windowId);
-    if (sub) {
-      try { sub.unsubscribe(); } catch {}
-      this.subs.delete(windowId);
-    }
+    const store = getDefaultStore()
+    try {
+      store.set(windowQueryStreamsAtom(windowId), {})
+      store.set(windowScalarsAtom(windowId), {})
+    } catch {}
   }
 
   async start({ windowId, meta, relays, context, onScalars }: StartArgs) {
@@ -66,80 +65,25 @@ class QueryRuntime {
 
       const doc: any = { type: 'hypernote', name: String(windowId) }
       if (meta?.hypernote && typeof meta.hypernote === 'object') doc.hypernote = meta.hypernote
+      const resolvedQueries: Record<string, any> = {}
       for (const [name, def] of queryEntries) {
-        doc[`$${name}`] = normalizeQueryDefinition(def)
+        resolvedQueries[name] = deepResolve(def, context)
       }
-
-      const resolvedDoc = resolveQueryDoc(doc, context)
-
-      // Seed pending markers for each declared query so UI can render loading fallbacks
-      try {
-        if (queryNames.length) {
-          const store = getDefaultStore()
-          const atom = windowScalarsAtom(windowId)
-          const prev = store.get(atom) || {}
-          let changed = false
-          const nextQueries: Record<string, any> = { ...(prev.queries || {}) }
-          for (const name of queryNames) {
-            if (!(name in nextQueries)) {
-              nextQueries[name] = PENDING_MARKER
-              changed = true
-            }
-          }
-          if (changed) {
-            const next = { ...prev, queries: nextQueries }
-            store.set(atom, next)
-          }
-        }
-      } catch {}
+      if (Object.keys(resolvedQueries).length) doc.queries = resolvedQueries
 
       const store = getDefaultStore()
-      const atom = windowScalarsAtom(windowId)
-      const prevSnapshots = store.get(atom) || {}
-      const initialSnapshots: Record<string, QuerySnapshot> = { ...prevSnapshots }
-      for (const name of queryNames) {
-        if (!initialSnapshots[name]) {
-          initialSnapshots[name] = { status: 'loading', data: [] }
-        }
-      }
-      store.set(atom, initialSnapshots)
-
-      const sub = this.client
-        .runQueryDocumentLive(resolvedDoc, context)
-        .subscribe({
-          next: (resultMap: Map<string, any>) => {
-            const store = getDefaultStore();
-            const atom = windowScalarsAtom(windowId);
-            const prevSnapshots = store.get(atom) || {};
-            const nextSnapshots: Record<string, QuerySnapshot> = { ...prevSnapshots };
-            for (const name of queryNames) {
-              if (!nextSnapshots[name]) {
-                nextSnapshots[name] = { status: 'loading', data: [] };
-              }
-            }
-            for (const [qid, value] of resultMap) {
-              const name = qid.startsWith('$') ? qid.slice(1) : qid;
-              if (!queryNames.includes(name)) continue;
-              const rendered = toRenderable(value);
-              nextSnapshots[name] = { status: 'ready', data: rendered };
-            }
-            store.set(atom, nextSnapshots);
-            onScalars(Object.fromEntries(Object.entries(nextSnapshots).map(([k, v]) => [k, v.data])));
-          },
-          error: (err: any) => {
-            const store = getDefaultStore();
-            const atom = windowScalarsAtom(windowId);
-            const prevSnapshots = store.get(atom) || {};
-            const nextSnapshots: Record<string, QuerySnapshot> = { ...prevSnapshots };
-            const message = err instanceof Error ? err.message : String(err);
-            for (const name of queryNames) {
-              const prevData = prevSnapshots[name]?.data ?? [];
-              nextSnapshots[name] = { status: 'error', data: prevData, error: message };
-            }
-            store.set(atom, nextSnapshots);
-          },
-        });
-      this.subs.set(windowId, sub);
+      const streamsAtom = windowQueryStreamsAtom(windowId)
+      store.set(streamsAtom, {})
+      const streamMap = this.client.composeDocQueries(doc, context)
+      const entries = Array.from(streamMap.entries()).map(([name, stream]) => {
+        const normalizedName = name.startsWith('$') ? name.slice(1) : name
+        return [normalizedName, wrapStream(stream)] as const
+      })
+      const normalized = Object.fromEntries(entries)
+      store.set(streamsAtom, normalized)
+      // Reset scalar snapshot cache so UI falls back to loading state until streams emit
+      store.set(windowScalarsAtom(windowId), {})
+      onScalars(Object.fromEntries(entries.map(([name]) => [name, []])))
     } catch (e) {
       console.warn('[Hypersauce] start error', e);
     }
@@ -147,10 +91,6 @@ class QueryRuntime {
 }
 
 export const queryRuntime = new QueryRuntime();
-
-function resolveQueryDoc(doc: any, context: any): any {
-  return deepResolve(doc, context)
-}
 
 function deepResolve(value: any, context: any): any {
   if (Array.isArray(value)) return value.map(item => deepResolve(item, context))
@@ -161,43 +101,12 @@ function deepResolve(value: any, context: any): any {
   }
   if (typeof value === 'string') {
     const trimmed = value.trim()
-    if (/^\$[A-Za-z0-9_.-]+$/.test(trimmed)) {
-      const resolved = getContextPath(trimmed.slice(1), context)
-      if (resolved !== undefined) return resolved
-    }
     const ref = parseReference(trimmed)
     if (ref) {
-      if (ref.root === 'queries') return `$${trimmed.slice('queries.'.length)}`
+      if (ref.root === 'queries') return trimmed
       const resolved = resolveReference(trimmed, { globals: context })
       if (resolved !== undefined) return resolved
     }
-  }
-  return value
-}
-
-function getContextPath(path: string, context: any): any {
-  const parts = path.split('.').filter(Boolean)
-  let current: any = context
-  for (const part of parts) {
-    if (current == null || typeof current !== 'object') return undefined
-    current = current[part]
-  }
-  return current
-}
-
-function normalizeQueryDefinition(value: any): any {
-  if (Array.isArray(value)) return value.map(item => normalizeQueryDefinition(item))
-  if (value && typeof value === 'object') {
-    const out: Record<string, any> = {}
-    for (const [k, v] of Object.entries(value)) out[k] = normalizeQueryDefinition(v)
-    return out
-  }
-  if (typeof value === 'string') {
-    const trimmed = value.trim()
-    if (trimmed.startsWith('queries.')) {
-      return `$${trimmed.slice('queries.'.length)}`
-    }
-    return value
   }
   return value
 }
@@ -228,4 +137,24 @@ function findDTag(tags: any[]): string | null {
     if (Array.isArray(tag) && tag[0] === 'd' && typeof tag[1] === 'string') return tag[1];
   }
   return null;
+}
+
+function wrapStream(stream: any) {
+  return {
+    subscribe(observer: any) {
+      const handlers = typeof observer === 'function' ? { next: observer } : observer || {}
+      const sub = stream?.subscribe?.({
+        next: (value: any) => {
+          try { handlers.next?.(toRenderable(value)) } catch (err) { handlers.error?.(err) }
+        },
+        error: (err: any) => handlers.error?.(err),
+        complete: () => handlers.complete?.(),
+      })
+      return {
+        unsubscribe() {
+          try { sub?.unsubscribe?.() } catch {}
+        },
+      }
+    },
+  }
 }

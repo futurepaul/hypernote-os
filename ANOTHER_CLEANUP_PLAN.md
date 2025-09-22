@@ -41,16 +41,13 @@ Validation
 Progress summary
 - ✅ `windowScalarsAtom` now stores `{ status, data, error }` snapshots (no more sentinels/timers).
 - ✅ Renderer consumes those snapshots and restores the “Loading…” fallback without flicker.
-- ❌ `$` translators (`normalizeQueryDefinition`, `resolveDollar*`) still exist.
-- ❌ Runtime still pushes snapshot updates manually; observables aren’t exposed to the component layer yet.
+- ✅ `$` translators (`normalizeQueryDefinition`, `resolveDollar*`) removed; runtime now hands `queries.*` through untouched.
+- ✅ Hypersauce exposes per-query observables (`composeDocQueries`), and the runtime feeds them into Jotai instead of managing snapshots by hand.
+- ✅ AppView subscribes to those streams via `useQuerySnapshotState`, keeping the “Loading…” fallback without manual timers.
 - ❌ No new tests around the observable flow.
 
 Remaining tasks
-1. Drop `resolveDollar`, `normalizeQueryDefinition`, and related `$` translators so the compiler/runtime stick with `queries.foo` paths end-to-end.
-2. Extend Hypersauce (or add a thin helper) to expose query observables (e.g. via `useObservableMemo`) so `AppView` can subscribe declaratively.
-3. Refactor `queryRuntime.start` into a thin adapter that returns those observables instead of managing timers/state internally.
-4. Update the renderer hook to consume the observable outputs directly (keeping the `{ status, data }` contract for nodes).
-5. Add regression tests covering the observable flow and `$`-free references.
+1. Add regression tests covering the observable flow and `$`-free references.
 
 ## Workstream 4 — Actions Architecture
 **Goal:** Clearly separate OS/system actions from app-defined actions while keeping invocation ergonomics consistent.

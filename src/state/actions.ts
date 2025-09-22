@@ -7,7 +7,6 @@ import { formsAtom } from './formsAtoms'
 import { hypersauceClientAtom } from './hypersauce'
 import { SimplePool, type Event } from 'nostr-tools'
 import { interpolate as interpolateTemplate } from '../interp/interpolate'
-import { resolveDollarPath } from '../interp/resolveDollar'
 import { isDefaultDocId, loadUserDocs, saveUserDocs } from './docs'
 
 type ActionScope = {
@@ -269,13 +268,7 @@ function interpolateActionValue(value: any, scope: ActionScope): any {
 }
 
 function interpolateActionString(value: string, scope: ActionScope): any {
-  const templated = interpolateTemplate(value, scope)
-  if (typeof templated === 'string') {
-    const resolved = resolveDollarPath(templated, scope.queries)
-    if (resolved !== undefined && resolved !== null) return resolved
-    return templated
-  }
-  return templated
+  return interpolateTemplate(value, scope)
 }
 
 function coerceEventShape(event: Record<string, any>) {
