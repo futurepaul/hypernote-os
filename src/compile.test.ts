@@ -1,7 +1,8 @@
 import { expect, test, describe } from "bun:test";
-import { compileMarkdownDoc } from "./compiler";
+import { compileMarkdownDoc, DOC_VERSION } from "./compiler";
 import { defaultApps } from "./apps/app";
 import { decompile } from "./decompiler";
+import { validateDoc } from "./types/doc";
 
 describe("compiler", () => {
   test("wallet compiles to AST with hstack and buttons", async () => {
@@ -36,6 +37,40 @@ describe("compiler", () => {
   test("rejects raw html", () => {
     const bad = `---\nname: Bad\n---\n<div>html</div>`;
     expect(() => compileMarkdownDoc(bad)).toThrow(/HTML is not supported/);
+  });
+
+  test("compiled docs expose version and pass schema validation", () => {
+    const doc = compileMarkdownDoc(defaultApps["app-store"]);
+    expect(doc.version).toBe(DOC_VERSION);
+    expect(() => validateDoc(doc)).not.toThrow();
+  });
+
+  test("nodes capture dependency metadata", () => {
+    const md = `---\nhypernote:\n  name: Deps\nqueries:\n  feed:\n    kinds: [1]\n---\nStatus: {{ queries.feed[0].content || user.pubkey }}`;
+    const compiled = compileMarkdownDoc(md);
+    const markdownNodes = collectNodesOfType(compiled.ast, 'markdown');
+    expect(markdownNodes.some(n => n.deps?.queries?.includes("feed"))).toBe(true);
+    expect(markdownNodes.some(n => n.deps?.globals?.includes("user"))).toBe(true);
+
+    const eachDoc = `---\nhypernote:\n  name: EachDeps\nqueries:\n  feed:\n    kinds: [1]\n---\n\`\`\`each.start\nfrom: queries.feed\nas: item\n\`\`\`\n- {{ item.content }}\n\`\`\`each.end\n`;
+    const compiledEach = compileMarkdownDoc(eachDoc);
+    const eachNode = compiledEach.ast.find(n => n.type === "each");
+    expect(eachNode?.deps?.queries).toContain("feed");
+
+    const buttonDoc = `---\nhypernote:\n  name: ButtonDeps\nqueries:\n  feed:\n    kinds: [1]\n---\n\`\`\`button\ntext: "{{ queries.feed[0].content }}"\n\`\`\`\n`;
+    const compiledButton = compileMarkdownDoc(buttonDoc);
+    const buttonNodes = collectNodesOfType(compiledButton.ast, 'button');
+    expect(buttonNodes.length).toBeGreaterThan(0);
+    expect(buttonNodes.some(n => n.deps?.queries?.includes('feed'))).toBe(true);
+  });
+
+  test("validateDoc rejects unexpected node types", () => {
+    const doc = compileMarkdownDoc(defaultApps.wallet);
+    const mutated = {
+      ...doc,
+      ast: [{ ...doc.ast[0], type: "unknown" as any }],
+    };
+    expect(() => validateDoc(mutated)).toThrow();
   });
 
   test("preserves yaml arrays in frontmatter", () => {

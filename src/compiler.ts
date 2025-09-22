@@ -2,31 +2,115 @@ import YAML from "yaml";
 import { markdown } from "very-small-parser";
 import { toText as markdownToText } from "very-small-parser/lib/markdown/block/toText";
 import { sanitizeStackConfig } from "./lib/layout";
-import { isReferenceExpression } from "./interp/reference";
+import { isReferenceExpression, parseReference } from "./interp/reference";
+import type { DocIR, UiNode as SchemaUiNode } from "./types/doc";
+import { validateDoc } from "./types/doc";
 
-export type UiNode = {
-  id: string;
-  type: "markdown" | "button" | "input" | "hstack" | "vstack" | "each" | "markdown_editor";
-  children?: UiNode[];
-  markdown?: any;
-  text?: string;
-  data?: any;
-  refs?: string[]; // variable references (e.g., queries.profile.name, user.pubkey, time.now)
-};
+export const DOC_VERSION = "1.2.0";
 
-export interface HypernoteMeta {
-  hypernote?: Record<string, any>;
-  queries?: Record<string, any>;
-  actions?: Record<string, any>;
-  components?: Record<string, any>;
-  events?: Record<string, any>;
-  [key: string]: any;
+export type UiNode = SchemaUiNode;
+export type HypernoteMeta = DocIR["meta"];
+export type CompiledDoc = DocIR;
+
+type NodeDeps = NonNullable<UiNode["deps"]>;
+
+const MOUSTACHE_EXPRESSION = /{{\s*([^}]+)\s*}}/g;
+
+function deriveDepsFromRefs(refs: Iterable<string>): NodeDeps | undefined {
+  const queryIds = new Set<string>();
+  const globals = new Set<string>();
+  for (const ref of refs) {
+    const parsed = parseReference(ref);
+    if (!parsed) continue;
+    if (parsed.root === 'queries') {
+      const first = parsed.segments[0];
+      if (typeof first === 'string' && first) queryIds.add(first);
+    } else {
+      globals.add(parsed.root);
+    }
+  }
+  // Debug helper: uncomment for dependency tracing.
+  // console.log('deriveDepsFromRefs', Array.from(refs), Array.from(queryIds), Array.from(globals));
+  if (!queryIds.size && !globals.size) return undefined;
+  const deps: NodeDeps = {};
+  if (queryIds.size) deps.queries = Array.from(queryIds).sort();
+  if (globals.size) deps.globals = Array.from(globals).sort();
+  return deps;
 }
 
-export type CompiledDoc = {
-  meta: HypernoteMeta;
-  ast: UiNode[];
-};
+function deriveDepsFromData(value: any): NodeDeps | undefined {
+  if (value === undefined || value === null) return undefined;
+  const refs = new Set<string>();
+  collectRefsFromValue(value, refs);
+  if (!refs.size) return undefined;
+  return deriveDepsFromRefs(refs);
+}
+
+function collectRefsFromValue(value: any, out: Set<string>) {
+  if (typeof value === 'string') {
+    collectRefsFromString(value, out);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) collectRefsFromValue(entry, out);
+    return;
+  }
+  if (value && typeof value === 'object') {
+    for (const entry of Object.values(value)) collectRefsFromValue(entry, out);
+  }
+}
+
+function collectRefsFromString(raw: string, out: Set<string>) {
+  if (!raw) return;
+  const trimmed = raw.trim();
+  if (isReferenceExpression(trimmed)) {
+    out.add(trimmed);
+  }
+  let match: RegExpExecArray | null;
+  MOUSTACHE_EXPRESSION.lastIndex = 0;
+  while ((match = MOUSTACHE_EXPRESSION.exec(raw)) !== null) {
+    const inner = String(match[1] ?? '').trim();
+    if (!inner) continue;
+    const options = inner.split('||').map(part => part.trim()).filter(Boolean);
+    const targets = options.length ? options : [inner];
+    for (const target of targets) {
+      const head = target.split('|', 1)[0]?.trim();
+      if (head && isReferenceExpression(head)) out.add(head);
+    }
+  }
+}
+
+function mergeNodeDeps(base: NodeDeps | undefined, next: NodeDeps | undefined): NodeDeps | undefined {
+  if (!next) return base;
+  const queries = new Set<string>(base?.queries ?? []);
+  const globals = new Set<string>(base?.globals ?? []);
+  for (const id of next.queries ?? []) queries.add(id);
+  for (const id of next.globals ?? []) globals.add(id);
+  const result: NodeDeps = {};
+  if (queries.size) result.queries = Array.from(queries).sort();
+  if (globals.size) result.globals = Array.from(globals).sort();
+  return result.queries || result.globals ? result : undefined;
+}
+
+function ensureDepsRecursive(nodes: UiNode[]): void {
+  for (const node of nodes) {
+    let deps = node.deps;
+    if (Array.isArray((node as any).refs) && (node as any).refs.length) {
+      deps = mergeNodeDeps(deps, deriveDepsFromRefs((node as any).refs));
+    }
+    if ((node as any).data !== undefined) {
+      deps = mergeNodeDeps(deps, deriveDepsFromData((node as any).data));
+    }
+    if (deps && (deps.queries?.length || deps.globals?.length)) {
+      node.deps = deps;
+    } else {
+      if (node.deps) delete node.deps;
+    }
+    if (Array.isArray((node as any).children)) {
+      ensureDepsRecursive((node.children as UiNode[]) || []);
+    }
+  }
+}
 
 function parseFrontmatter(tokens: any[]): { meta: Record<string, any>; body: any[] } {
   let meta: Record<string, any> = {};
@@ -96,7 +180,10 @@ const flush = () => {
     const restored = restoreTemplatePlaceholders(normalized, templates.map);
     const text = restoreTemplateText(markdownToText(restored), templates.map);
     const refs = extractRefs(text);
-    (frame.node.children as UiNode[]).push({ id: genId(), type: "markdown", markdown: restored, text, refs });
+    const deps = deriveDepsFromRefs(refs);
+    const node: UiNode = { id: genId(), type: "markdown", markdown: restored, text, refs };
+    if (deps) node.deps = deps;
+    (frame.node.children as UiNode[]).push(node);
     frame.group = [];
   };
 
@@ -115,7 +202,10 @@ const flush = () => {
         const rawBlock = (t.value || "").trim();
         const parsed = safeParseYamlBlock(rawBlock);
         const data = restoreTemplateData(parsed, templates.map);
-        pushNode({ id: genId(), type: "button", data });
+        const deps = deriveDepsFromData(data);
+        const node: UiNode = { id: genId(), type: "button", data };
+        if (deps) node.deps = deps;
+        pushNode(node);
         continue;
       }
       if (info === "input") {
@@ -123,7 +213,10 @@ const flush = () => {
         const rawBlock = (t.value || "").trim();
         const parsed = safeParseYamlBlock(rawBlock);
         const data = restoreTemplateData(parsed, templates.map);
-        pushNode({ id: genId(), type: "input", data });
+        const deps = deriveDepsFromData(data);
+        const node: UiNode = { id: genId(), type: "input", data };
+        if (deps) node.deps = deps;
+        pushNode(node);
         continue;
       }
       if (info === "markdown-editor" || info === "markdown_editor") {
@@ -131,7 +224,10 @@ const flush = () => {
         const rawBlock = (t.value || "").trim();
         const parsed = safeParseYamlBlock(rawBlock);
         const data = restoreTemplateData(parsed, templates.map);
-        pushNode({ id: genId(), type: "markdown_editor", data });
+        const deps = deriveDepsFromData(data);
+        const node: UiNode = { id: genId(), type: "markdown_editor", data };
+        if (deps) node.deps = deps;
+        pushNode(node);
         continue;
       }
       if (info === "hstack start" || info === "hstack.start") {
@@ -141,7 +237,11 @@ const flush = () => {
         const restored = parsed !== undefined ? restoreTemplateData(parsed, templates.map) : undefined;
         const data = restored ? sanitizeStackConfig(restored) : undefined;
         const node: UiNode = { id: genId(), type: "hstack", children: [] };
-        if (data) node.data = data;
+        if (data) {
+          node.data = data;
+          const deps = deriveDepsFromData(data);
+          if (deps) node.deps = deps;
+        }
         pushNode(node);
         stack.push({ node, group: [] });
         continue;
@@ -153,7 +253,11 @@ const flush = () => {
         const restored = parsed !== undefined ? restoreTemplateData(parsed, templates.map) : undefined;
         const data = restored ? sanitizeStackConfig(restored) : undefined;
         const node: UiNode = { id: genId(), type: "vstack", children: [] };
-        if (data) node.data = data;
+        if (data) {
+          node.data = data;
+          const deps = deriveDepsFromData(data);
+          if (deps) node.deps = deps;
+        }
         pushNode(node);
         stack.push({ node, group: [] });
         continue;
@@ -166,7 +270,11 @@ const flush = () => {
         let source = String((data?.from ?? data?.source) || 'queries.items');
         let as = String(data?.as || 'item');
         if (as.startsWith('$')) as = as.slice(1);
-        const node: UiNode = { id: genId(), type: "each", children: [], data: { source, as } };
+        const nodeData: Record<string, any> = { ...(data || {}), source, as };
+        if (Object.prototype.hasOwnProperty.call(nodeData, 'from')) delete (nodeData as any).from;
+        const deps = deriveDepsFromData(nodeData);
+        const node: UiNode = { id: genId(), type: "each", children: [], data: nodeData };
+        if (deps) node.deps = deps;
         pushNode(node);
         stack.push({ node, group: [] });
         continue;
@@ -210,7 +318,15 @@ const flush = () => {
   const normalizedMeta = normalizeMeta(meta)
   if (normalizedMeta.queries) assertNoLegacyQueryRefs(normalizedMeta.queries)
 
-  return { meta: normalizedMeta, ast: root.children || [] };
+  const ast = (root.children || []) as UiNode[]
+  ensureDepsRecursive(ast)
+  const candidate: CompiledDoc = validateDoc({
+    version: DOC_VERSION,
+    meta: normalizedMeta,
+    ast,
+  })
+
+  return candidate;
 }
 
 export default compileMarkdownDoc;
@@ -227,7 +343,8 @@ function extractRefs(text: string): string[] {
     const candidates = parts.length ? parts : [''];
     for (const part of candidates) {
       if (!part) continue;
-      if (isReferenceExpression(part)) refs.add(part);
+      const head = part.split('|', 1)[0]?.trim();
+      if (head && isReferenceExpression(head)) refs.add(head);
     }
   }
   return Array.from(refs);

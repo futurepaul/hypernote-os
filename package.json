@@ -11,6 +11,7 @@
   "dependencies": {
     "bun-plugin-tailwind": "^0.0.15",
     "hypersauce": "git+https://github.com/futurepaul/hypersauce.git#830e340",
+    "jotai": "^2.9.3",
     "nostr-tools": "^2.7.2",
     "overtype": "^1.2.6",
     "react": "^19",
@@ -18,7 +19,7 @@
     "tailwindcss": "^4.1.11",
     "very-small-parser": "^1.14.0",
     "yaml": "^2.8.1",
-    "jotai": "^2.9.3"
+    "zod": "^4.1.11"
   },
   "devDependencies": {
     "@types/react": "^19",
