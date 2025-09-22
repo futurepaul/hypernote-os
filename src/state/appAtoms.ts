@@ -46,7 +46,7 @@ function loadOpenWindows(fallback: string[]): string[] {
         seen.add(id)
         filtered.push(id)
       }
-      return filtered
+      return filtered.length ? filtered : fallback
     }
   } catch {}
   return fallback
@@ -93,6 +93,9 @@ export const openWindowsAtom = atom(
       if (seen.has(id)) continue
       seen.add(id)
       normalized.push(id)
+    }
+    if (normalized.length === 0) {
+      for (const id of defaultDocIds) if (!seen.has(id)) normalized.push(id)
     }
     set(openWindowsBaseAtom, normalized)
     saveOpenWindows(normalized)
