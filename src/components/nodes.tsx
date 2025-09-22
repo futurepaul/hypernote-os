@@ -288,6 +288,9 @@ function EachNode({ node, globals, windowId, queries, debug = false }: { node: N
   const listRaw = queries ? queries[source] : undefined;
   const list = Array.isArray(listRaw) ? listRaw : [];
   if (debug) console.log(`[Each] source=${source}`, { length: list.length });
+  if (!Array.isArray(listRaw)) {
+    return <div className="italic text-sm text-gray-600">Loading…</div>;
+  }
   if (!list.length) return null;
 
   return (
