@@ -16,6 +16,8 @@ type StartArgs = {
   onScalars: (scalars: Record<string, any>) => void;
 };
 
+const PENDING_MARKER = Symbol('pending');
+
 class QueryRuntime {
   private client: any | null = null;
   private relays: string[] = [];
@@ -63,6 +65,25 @@ class QueryRuntime {
       if (!context?.user?.pubkey) return;
 
       const resolvedDoc = resolveQueryDoc(doc, context)
+
+      // Seed pending markers for each declared query so UI can render loading fallbacks
+      try {
+        const queryKeys = Object.keys(meta || {}).filter((key) => key.startsWith('$'))
+        if (queryKeys.length) {
+          const store = getDefaultStore()
+          const atom = windowScalarsAtom(windowId)
+          const prev = store.get(atom) || {}
+          let changed = false
+          const next: Record<string, any> = { ...prev }
+          for (const key of queryKeys) {
+            if (!(key in next)) {
+              next[key] = PENDING_MARKER
+              changed = true
+            }
+          }
+          if (changed) store.set(atom, next)
+        }
+      } catch {}
 
       const sub = this.client
         .runQueryDocumentLive(resolvedDoc, context)
