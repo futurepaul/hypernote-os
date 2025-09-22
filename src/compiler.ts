@@ -138,7 +138,7 @@ const flush = () => {
         stack.push({ node, group: [] });
         continue;
       }
-      if (info === "each") {
+      if (info === "each" || info === "each start" || info === "each.start") {
         flush();
         const data = safeParseYamlBlock((t.value || "").trim());
         let source = String((data?.from ?? data?.source) || '$items');

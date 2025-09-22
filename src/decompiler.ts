@@ -48,7 +48,7 @@ function encodeNode(n: UiNode): string {
     }
     if (data.as) payload.as = data.as
     const y = YAML.stringify(payload).trimEnd()
-    const start = `\n\`\`\`each\n${y}\n\`\`\`\n`
+    const start = `\n\`\`\`each.start\n${y}\n\`\`\`\n`
     const body = (n.children || []).map(encodeNode).join('\n')
     const end = `\n\`\`\`each.end\n\`\`\`\n`
     return `${start}${body}${end}`

@@ -97,6 +97,25 @@ describe("compiler", () => {
       .find(n => n.type === "markdown")?.markdown?.[0]?.children?.find((child: any) => child.type === 'image');
     expect(rtImageNode?.url).toBe('{{ $feed.1.picture }}?w=48');
   });
+
+  test("each blocks accept .start and decompile with .start", () => {
+    const md = `---\nname: Items\n---\n\n\`\`\`each.start\nfrom: $items\nas: item\n\`\`\`\nItem: {{ $item.name }}\n\`\`\`each.end\n\`\`\`\n`;
+    const compiled = compileMarkdownDoc(md);
+    const eachNode = compiled.ast.find(n => n.type === "each");
+    expect(eachNode).toBeTruthy();
+    expect(eachNode?.data?.as).toBe("item");
+    const decompiled = decompile(compiled);
+    expect(decompiled).toContain("```each.start");
+  });
+
+  test("legacy each blocks without suffix still compile", () => {
+    const md = `---\nname: LegacyEach\n---\n\n\`\`\`each\nfrom: $items\nas: item\n\`\`\`\nLegacy: {{ $item.name }}\n\`\`\`each.end\n\`\`\`\n`;
+    const compiled = compileMarkdownDoc(md);
+    const eachNode = compiled.ast.find(n => n.type === "each");
+    expect(eachNode).toBeTruthy();
+    const decompiled = decompile(compiled);
+    expect(decompiled).toContain("```each.start");
+  });
 });
 
 function astContainsImageNode(ast: any): boolean {

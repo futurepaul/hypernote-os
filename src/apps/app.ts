@@ -88,7 +88,7 @@ icon: folder.png
 
 {{ $apps.length }} published apps tagged hypernote 1.2.0.
 
-\`\`\`each
+\`\`\`each.start
 from: $apps_enriched
 as: app
 \`\`\`
