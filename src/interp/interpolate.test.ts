@@ -40,3 +40,28 @@ test("interpolate fallback works with query paths", () => {
   });
   expect(out).toBe("Avatar: https://example.com/avatar.png");
 });
+
+test("format_date pipe formats unix timestamp", () => {
+  const out = interpolate("When: {{ time.now | format_date }}", {
+    globals: { time: { now: 1700000000 } },
+    queries: {},
+  });
+  expect(out.includes("When:"))
+    .toBe(true);
+});
+
+test("uppercase pipe converts to upper case", () => {
+  const out = interpolate("{{ queries.profile.name | uppercase }}", {
+    globals: {},
+    queries: { profile: { name: "sam" } },
+  });
+  expect(out).toBe("SAM");
+});
+
+test("trim pipe removes whitespace", () => {
+  const out = interpolate("[{{ queries.note.content | trim }}]", {
+    globals: {},
+    queries: { note: { content: "  hello  " } },
+  });
+  expect(out).toBe("[hello]");
+});
