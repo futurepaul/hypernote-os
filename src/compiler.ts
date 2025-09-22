@@ -14,7 +14,10 @@ export type CompiledDoc = DocIR;
 
 type NodeDeps = NonNullable<UiNode["deps"]>;
 
+const FRONTMATTER_FENCE = /^---\s*$/;
 const MOUSTACHE_EXPRESSION = /{{\s*([^}]+)\s*}}/g;
+
+type SplitDoc = { meta: Record<string, any>; body: string };
 
 function deriveDepsFromRefs(refs: Iterable<string>): NodeDeps | undefined {
   const queryIds = new Set<string>();
@@ -112,18 +115,27 @@ function ensureDepsRecursive(nodes: UiNode[]): void {
   }
 }
 
-function parseFrontmatter(tokens: any[]): { meta: Record<string, any>; body: any[] } {
-  let meta: Record<string, any> = {};
-  const body: any[] = [];
-  for (const t of tokens) {
-    if (t.type === "metadata" && (t.fence === undefined || t.fence === "---")) {
-      try {
-        meta = YAML.parse(t.value || "") || {};
-      } catch {}
-      continue;
-    }
-    body.push(t);
+function splitFrontmatter(source: string): SplitDoc {
+  if (!source) return { meta: {}, body: '' };
+  const lines = source.split(/\r?\n/);
+  if (!lines.length || !FRONTMATTER_FENCE.test(lines[0] ?? '')) {
+    return { meta: {}, body: source };
   }
+  let endIndex = -1;
+  for (let i = 1; i < lines.length; i++) {
+    if (FRONTMATTER_FENCE.test(lines[i] ?? '')) {
+      endIndex = i;
+      break;
+    }
+  }
+  if (endIndex === -1) return { meta: {}, body: source };
+  const metaLines = lines.slice(1, endIndex).join('\n');
+  let meta: Record<string, any> = {};
+  try {
+    const parsed = YAML.parse(metaLines);
+    if (parsed && typeof parsed === 'object') meta = parsed;
+  } catch {}
+  const body = lines.slice(endIndex + 1).join('\n');
   return { meta, body };
 }
 
@@ -144,24 +156,12 @@ function safeParseYamlBlock(raw: string): any {
 }
 
 export function compileMarkdownDoc(md: string): CompiledDoc {
-  // Pre-parse frontmatter to be resilient to generators
-  let meta: Record<string, any> = {}
-  let source = md || ''
-  if (source.startsWith('---\n')) {
-    const idx = source.indexOf('\n---\n', 4)
-    if (idx !== -1) {
-      try { meta = YAML.parse(source.slice(4, idx)) || {} } catch {}
-      source = source.slice(idx + 5)
-    }
-  }
-  const templates = maskTemplatePlaceholders(source)
-  source = ensureBlankLineBeforeFences(templates.masked)
-  const mdast = markdown.block.parse(source);
+  const { meta: rawMeta, body } = splitFrontmatter(md || '')
+  const templates = maskTemplatePlaceholders(body)
+  const prepared = ensureBlankLineBeforeFences(templates.masked)
+  const mdast = markdown.block.parse(prepared);
   const tokens = Array.isArray(mdast) ? mdast : [mdast];
-  const parsed = parseFrontmatter(tokens);
-  // Merge token-derived meta (if any) with pre-parsed
-  meta = { ...(parsed.meta || {}), ...meta }
-  const body = parsed.body
+  let meta: Record<string, any> = rawMeta
 
   // id generator for nodes
   let nextId = 1;
@@ -193,7 +193,7 @@ const flush = () => {
     (fr.node.children as UiNode[]).push(n);
   };
 
-  for (const t of body) {
+  for (const t of tokens) {
     if (t.type === "code") {
       const langRaw = (t.lang || "").trim();
       const info = langRaw.toLowerCase();
@@ -292,9 +292,6 @@ const flush = () => {
       // Unknown fence — treat as normal markdown (rendered by toHast)
       const fr = stack[stack.length - 1];
       if (fr) fr.group.push(t);
-    } else if (t.type === "metadata") {
-      // already handled
-      continue;
     } else {
       const fr2 = stack[stack.length - 1];
       if (fr2) fr2.group.push(t);
