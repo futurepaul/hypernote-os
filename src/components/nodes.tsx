@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState, useRef, useCallback, Fragment, type ReactNode } from "react";
+import { useMemo, useEffect, useState, useRef, useCallback, Fragment, type ReactNode, type CSSProperties } from "react";
 import OverType from "overtype";
 import { nip19, getPublicKey } from "nostr-tools";
 import { useAtom, useAtomValue } from "jotai";
@@ -7,6 +7,7 @@ import { formsAtom } from "../state/formsAtoms";
 import { interpolate as interp } from "../interp/interpolate";
 import { useAction, normalizeActionName } from "../state/actions";
 import { renderMarkdownAst, type MarkdownScope } from "./MarkdownRenderer";
+import { sanitizeStackConfig } from "../lib/layout";
 
 export type Node = UiNode;
 
@@ -271,6 +272,15 @@ function buildPayload(spec: any, globals: any, queries: Record<string, any>) {
   return out;
 }
 
+function stackStyleFromData(data: any): CSSProperties | undefined {
+  const config = sanitizeStackConfig(data);
+  if (!config) return undefined;
+  const style: CSSProperties = {};
+  if (config.width) style.width = config.width;
+  if (config.height) style.height = config.height;
+  return style;
+}
+
 export function RenderNodes({ nodes, globals, windowId, queries, inline = false, debug = false }: RenderNodesProps) {
   const renderNode = (n: Node, key: number): ReactNode => {
     if (n.type === "markdown") {
@@ -311,8 +321,13 @@ export function RenderNodes({ nodes, globals, windowId, queries, inline = false,
       );
     }
     if (n.type === "hstack" || n.type === "vstack") {
+      const style = stackStyleFromData(n.data);
       return (
-        <div key={key} className={n.type === "hstack" ? "flex flex-row gap-2" : "flex flex-col gap-2"}>
+        <div
+          key={key}
+          className={n.type === "hstack" ? "flex flex-row gap-2" : "flex flex-col gap-2"}
+          style={style}
+        >
           {(n.children || []).map((c, j) => (
             <RenderNodes
               key={`${c.id || j}`}

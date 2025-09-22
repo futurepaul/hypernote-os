@@ -5,6 +5,7 @@ import { getInitialDocs } from '../state/docs'
 type Layout = { x: number; y: number; z: number }
 
 const LAYOUT_STORAGE_KEY = 'windowLayout.v1'
+const OPEN_WINDOWS_STORAGE_KEY = 'openWindows.v1'
 
 function loadLayout(): Record<string, Layout> | null {
   try {
@@ -30,6 +31,34 @@ function computeDefaultLayout(ids: string[]): Record<string, Layout> {
   return out
 }
 
+function loadOpenWindows(fallback: string[]): string[] {
+  try {
+    if (typeof localStorage === 'undefined') return fallback
+    const raw = localStorage.getItem(OPEN_WINDOWS_STORAGE_KEY)
+    if (!raw) return fallback
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) {
+      const seen = new Set<string>()
+      const filtered: string[] = []
+      for (const id of parsed) {
+        if (typeof id !== 'string') continue
+        if (seen.has(id)) continue
+        seen.add(id)
+        filtered.push(id)
+      }
+      return filtered
+    }
+  } catch {}
+  return fallback
+}
+
+function saveOpenWindows(ids: string[]) {
+  try {
+    if (typeof localStorage === 'undefined') return
+    localStorage.setItem(OPEN_WINDOWS_STORAGE_KEY, JSON.stringify(ids))
+  } catch {}
+}
+
 const defaultDocIds = Object.keys(getInitialDocs())
 const initialLayout: Record<string, Layout> = loadLayout() || computeDefaultLayout(defaultDocIds)
 const initialZCounter = Math.max(0, ...Object.values(initialLayout).map(l => l.z)) + 1
@@ -50,8 +79,25 @@ export const docAtom = atomFamily((id: string) => atom((get) => (get(docsAtom)[i
 export const editorSelectionAtom = atom<string>(defaultDocIds[0] || '')
 
 // Track which windows are open (rendered). Initialized with all doc ids.
-const initialOpen = Object.keys(getInitialDocs())
-export const openWindowsAtom = atom<string[]>(initialOpen)
+const initialOpen = loadOpenWindows(defaultDocIds)
+const openWindowsBaseAtom = atom<string[]>(initialOpen)
+export const openWindowsAtom = atom(
+  get => get(openWindowsBaseAtom),
+  (get, set, updater: string[] | ((prev: string[]) => string[])) => {
+    const current = get(openWindowsBaseAtom)
+    const next = typeof updater === 'function' ? (updater as any)(current) : updater
+    const seen = new Set<string>()
+    const normalized: string[] = []
+    for (const id of next) {
+      if (typeof id !== 'string') continue
+      if (seen.has(id)) continue
+      seen.add(id)
+      normalized.push(id)
+    }
+    set(openWindowsBaseAtom, normalized)
+    saveOpenWindows(normalized)
+  }
+)
 export const isWindowOpenAtom = atomFamily((id: string) => atom((get) => (get(openWindowsAtom).includes(id))))
 export const openWindowAtom = atom(null, (get, set, id: string) => {
   const open = get(openWindowsAtom)

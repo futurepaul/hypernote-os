@@ -1,6 +1,7 @@
 import YAML from 'yaml'
 import { toText as markdownToText } from 'very-small-parser/lib/markdown/block/toText'
 import type { CompiledDoc, UiNode } from './compiler'
+import { sanitizeStackConfig } from './lib/layout'
 
 function sortObject<T extends Record<string, any>>(obj: T): T {
   const out: any = Array.isArray(obj) ? [] : {}
@@ -33,7 +34,9 @@ function encodeNode(n: UiNode): string {
   }
   if (n.type === 'hstack' || n.type === 'vstack') {
     const kind = n.type
-    const start = `\n\`\`\`${kind}.start\n\`\`\`\n`
+    const config = sanitizeStackConfig(n.data)
+    const configYaml = config ? `${YAML.stringify(config).trimEnd()}\n` : ''
+    const start = `\n\`\`\`${kind}.start\n${configYaml}\`\`\`\n`
     const body = (n.children || []).map(encodeNode).join('\n')
     const end = `\n\`\`\`${kind}.end\n\`\`\`\n`
     return `${start}${body}${end}`

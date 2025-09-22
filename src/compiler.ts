@@ -1,6 +1,7 @@
 import YAML from "yaml";
 import { markdown } from "very-small-parser";
 import { toText as markdownToText } from "very-small-parser/lib/markdown/block/toText";
+import { sanitizeStackConfig } from "./lib/layout";
 
 export type UiNode = {
   id: string;
@@ -59,6 +60,8 @@ export function compileMarkdownDoc(md: string): CompiledDoc {
       source = source.slice(idx + 5)
     }
   }
+  const templates = maskTemplatePlaceholders(source)
+  source = templates.masked
   const mdast = markdown.block.parse(source);
   const tokens = Array.isArray(mdast) ? mdast : [mdast];
   const parsed = parseFrontmatter(tokens);
@@ -80,9 +83,10 @@ const flush = () => {
     assertNoHtml(frame.group);
     const cloned = cloneMarkdownNodes(frame.group);
     const normalized = normalizeMarkdownAst(cloned);
-    const text = markdownToText(normalized);
+    const restored = restoreTemplatePlaceholders(normalized, templates.map);
+    const text = restoreTemplateText(markdownToText(restored), templates.map);
     const refs = extractRefs(text);
-    (frame.node.children as UiNode[]).push({ id: genId(), type: "markdown", markdown: normalized, text, refs });
+    (frame.node.children as UiNode[]).push({ id: genId(), type: "markdown", markdown: restored, text, refs });
     frame.group = [];
   };
 
@@ -116,14 +120,20 @@ const flush = () => {
       }
       if (info === "hstack start" || info === "hstack.start") {
         flush();
+        const raw = (t.value || "").trim();
+        const data = raw ? sanitizeStackConfig(safeParseYamlBlock(raw)) : undefined;
         const node: UiNode = { id: genId(), type: "hstack", children: [] };
+        if (data) node.data = data;
         pushNode(node);
         stack.push({ node, group: [] });
         continue;
       }
       if (info === "vstack start" || info === "vstack.start") {
         flush();
+        const raw = (t.value || "").trim();
+        const data = raw ? sanitizeStackConfig(safeParseYamlBlock(raw)) : undefined;
         const node: UiNode = { id: genId(), type: "vstack", children: [] };
+        if (data) node.data = data;
         pushNode(node);
         stack.push({ node, group: [] });
         continue;
@@ -167,9 +177,10 @@ const flush = () => {
       assertNoHtml(frame.group);
       const cloned = cloneMarkdownNodes(frame.group);
       const normalized = normalizeMarkdownAst(cloned);
-      const text = markdownToText(normalized);
+      const restored = restoreTemplatePlaceholders(normalized, templates.map);
+      const text = restoreTemplateText(markdownToText(restored), templates.map);
       const refs = extractRefs(text);
-      (frame.node.children as UiNode[]).push({ id: genId(), type: "markdown", markdown: normalized, text, refs });
+      (frame.node.children as UiNode[]).push({ id: genId(), type: "markdown", markdown: restored, text, refs });
       frame.group = [];
     }
   }
@@ -216,6 +227,9 @@ function normalizeMarkdownAst(nodes: any[]): any[] {
     if (clone.type === 'paragraph' && Array.isArray(clone.children)) {
       clone.children = mergeImageReferences(clone.children);
     }
+    if (Array.isArray(clone.children)) {
+      clone.children = normalizeTemplateArtifacts(clone.children);
+    }
     return clone;
   });
 }
@@ -255,4 +269,112 @@ function assertNoHtml(nodes: any[]) {
     }
     if (Array.isArray((node as any).children)) assertNoHtml((node as any).children);
   }
+}
+
+function normalizeTemplateArtifacts(children: any[]): any[] {
+  const out: any[] = [];
+  for (let i = 0; i < children.length; ) {
+    const child = children[i];
+    if (!nodeContainsTemplateDelimiter(child)) {
+      out.push(child);
+      i += 1;
+      continue;
+    }
+    let j = i;
+    let combined = '';
+    while (j < children.length && nodeContainsTemplateDelimiter(children[j])) {
+      combined += extractNodeText(children[j]);
+      j += 1;
+    }
+    const segments = splitTemplateSegments(combined);
+    for (const segment of segments) {
+      if (!segment.value) continue;
+      out.push({ type: 'text', value: segment.value });
+    }
+    i = j;
+  }
+  return out;
+}
+
+type TemplateMaskState = {
+  masked: string;
+  map: Map<string, string>;
+};
+
+function maskTemplatePlaceholders(source: string): TemplateMaskState {
+  const map = new Map<string, string>();
+  let counter = 0;
+  const masked = source.replace(/{{[\s\S]*?}}/g, (match) => {
+    const key = `MPLACE${counter++}X`;
+    map.set(key, match);
+    return key;
+  });
+  return { masked, map };
+}
+
+function restoreTemplatePlaceholders(node: any, map: Map<string, string>): any {
+  if (Array.isArray(node)) {
+    return node.map((child) => restoreTemplatePlaceholders(child, map));
+  }
+  if (!node || typeof node !== 'object') return node;
+  const clone: any = { ...node };
+  for (const key of Object.keys(clone)) {
+    const value = clone[key];
+    if (typeof value === 'string') {
+      clone[key] = restoreTemplateText(value, map);
+    } else if (Array.isArray(value)) {
+      clone[key] = restoreTemplatePlaceholders(value, map);
+    } else if (value && typeof value === 'object') {
+      clone[key] = restoreTemplatePlaceholders(value, map);
+    }
+  }
+  return clone;
+}
+
+function restoreTemplateText(text: string, map: Map<string, string>): string {
+  if (typeof text !== 'string' || !text) return typeof text === 'string' ? text : '';
+  let out = text;
+  for (const [token, value] of map.entries()) {
+    if (out.includes(token)) {
+      out = out.split(token).join(value);
+    }
+  }
+  return out;
+}
+
+function nodeContainsTemplateDelimiter(node: any): boolean {
+  if (!node || typeof node !== 'object') return false;
+  const text = extractNodeText(node);
+  if (!text) return false;
+  return text.includes('{{') || text.includes('}}');
+}
+
+function extractNodeText(node: any): string {
+  if (!node || typeof node !== 'object') return '';
+  if (typeof node.value === 'string') return node.value;
+  if (Array.isArray(node.children)) {
+    return node.children.map(extractNodeText).join('');
+  }
+  return '';
+}
+
+type TemplateSegment = { type: 'text' | 'template'; value: string };
+
+function splitTemplateSegments(text: string): TemplateSegment[] {
+  const segments: TemplateSegment[] = [];
+  const regex = /{{[\s\S]*?}}/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    const idx = match.index ?? 0;
+    if (idx > lastIndex) {
+      segments.push({ type: 'text', value: text.slice(lastIndex, idx) });
+    }
+    segments.push({ type: 'template', value: match[0] ?? '' });
+    lastIndex = idx + (match[0]?.length ?? 0);
+  }
+  if (lastIndex < text.length) {
+    segments.push({ type: 'text', value: text.slice(lastIndex) });
+  }
+  return segments;
 }

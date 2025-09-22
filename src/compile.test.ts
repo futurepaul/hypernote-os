@@ -51,6 +51,52 @@ describe("compiler", () => {
     const { ast } = compileMarkdownDoc(defaultApps["app-store"]);
     expect(astContainsImageNode(ast)).toBe(true);
   });
+
+  test("stack nodes support pixel dimensions", () => {
+    const md = `---\nname: Sized\n---\n\n\`\`\`hstack.start\nwidth: 80px\nheight: 120\n\`\`\`\ncontent\n\`\`\`hstack.end\n\`\`\`\n`;
+    const compiled = compileMarkdownDoc(md);
+    const stack = compiled.ast.find(n => n.type === "hstack");
+    expect(stack?.data?.width).toBe("80px");
+    expect(stack?.data?.height).toBe("120px");
+
+    const roundtripped = compileMarkdownDoc(decompile(compiled));
+    const rtStack = roundtripped.ast.find(n => n.type === "hstack");
+    expect(rtStack?.data?.width).toBe("80px");
+    expect(rtStack?.data?.height).toBe("120px");
+  });
+
+  test("mustache variables survive underscores without emphasis", () => {
+    const md = `---\nname: Feed\n---\n\n{{ $feed.1.display_name }} - {{ $feed.0.created_at }}`;
+    const compiled = compileMarkdownDoc(md);
+    const markdownNode = compiled.ast.find(n => n.type === "markdown");
+    expect(markdownNode).toBeTruthy();
+    const paragraph = (markdownNode as any)?.markdown?.find((child: any) => child.type === "paragraph");
+    expect(paragraph).toBeTruthy();
+    const emphasisNodes = collectNodesOfType(paragraph, 'emphasis');
+    expect(emphasisNodes.length).toBe(0);
+    const textContent = collectNodesOfType(paragraph, 'text').map(n => n.value).join('');
+    expect(textContent.trim()).toBe('{{ $feed.1.display_name }} - {{ $feed.0.created_at }}');
+
+    const roundtripped = compileMarkdownDoc(decompile(compiled));
+    const rtParagraph = roundtripped.ast
+      .find(n => n.type === "markdown")?.markdown?.find((child: any) => child.type === "paragraph");
+    const rtText = collectNodesOfType(rtParagraph, 'text').map(n => n.value).join('');
+    expect(rtText.trim()).toBe('{{ $feed.1.display_name }} - {{ $feed.0.created_at }}');
+  });
+
+  test("mustache variables inside image urls are preserved", () => {
+    const md = `---\nname: Img\n---\n\n![avatar]({{ $feed.1.picture }}?w=48)`;
+    const compiled = compileMarkdownDoc(md);
+    const imageNode = compiled.ast
+      .find(n => n.type === "markdown")?.markdown?.[0]?.children?.find((child: any) => child.type === 'image');
+    expect(imageNode).toBeTruthy();
+    expect(imageNode?.url).toBe('{{ $feed.1.picture }}?w=48');
+
+    const roundtripped = compileMarkdownDoc(decompile(compiled));
+    const rtImageNode = roundtripped.ast
+      .find(n => n.type === "markdown")?.markdown?.[0]?.children?.find((child: any) => child.type === 'image');
+    expect(rtImageNode?.url).toBe('{{ $feed.1.picture }}?w=48');
+  });
 });
 
 function astContainsImageNode(ast: any): boolean {
@@ -61,4 +107,20 @@ function astContainsImageNode(ast: any): boolean {
     if (Array.isArray(ast.children) && astContainsImageNode(ast.children)) return true;
   }
   return false;
+}
+
+function collectNodesOfType(node: any, type: string): any[] {
+  const out: any[] = [];
+  if (!node || typeof node !== 'object') return out;
+  if (Array.isArray(node)) {
+    node.forEach(n => out.push(...collectNodesOfType(n, type)));
+    return out;
+  }
+  if (node.type === type) out.push(node);
+  if (Array.isArray(node.children)) {
+    node.children.forEach((child: any) => {
+      out.push(...collectNodesOfType(child, type));
+    });
+  }
+  return out;
 }

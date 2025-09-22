@@ -125,7 +125,7 @@ export function AppView({ id }: { id: string }) {
   }
 
   return (
-    <div className="max-h-[100vh] overflow-y-auto">
+    <div className="max-h-[90vh] overflow-y-auto">
       <RenderNodes nodes={nodes} globals={globals} windowId={id} queries={queriesForWindow} debug={debug} />
     </div>
   );

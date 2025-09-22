@@ -58,7 +58,7 @@ export function App() {
   }, [setEditorSelection, openWindow, bringToFront])
 
   return (
-    <main className="min-h-screen max-h-screen overflow-none text-gray-900">
+    <main className="min-h-screen max-h-screen overflow-hidden text-gray-900">
       {bootStage !== 'ready' ? (
         <LoginWindow />
       ) : openIds.map((id) => {

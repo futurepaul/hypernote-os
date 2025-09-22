@@ -53,7 +53,7 @@ export function DraggableWindow({ id, title, children, contentClassName, onClose
   return (
     <div
       className={`absolute select-none`}
-      style={{ left: pos.x, top: pos.y, zIndex: z }}
+      style={{ left: pos.x, top: pos.y, zIndex: z, maxWidth: '65vw' }}
       ref={dragRef}
       onMouseDown={() => bringToFront(id)}
     >
