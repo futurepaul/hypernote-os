@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useRef } from "react";
+import { useMemo, useEffect, useRef, useState } from "react";
 import { compileMarkdownDoc, type UiNode } from "../compiler";
 import { useAtomValue, useSetAtom } from 'jotai'
 import { windowScalarsAtom } from '../state/queriesAtoms'
@@ -109,12 +109,26 @@ export function AppView({ id }: { id: string }) {
 
   const EMPTY: Record<string, any> = useMemo(() => ({}), []);
   const queriesForWindow = rawScalars ?? EMPTY;
-  const hasLoadedQueries = useMemo(() => {
-    if (!compiled?.meta) return true
-    const queryKeys = Object.keys(compiled.meta).filter((key) => key.startsWith('$'))
-    if (queryKeys.length === 0) return true
-    return queryKeys.some((key) => rawScalars && rawScalars[key] !== undefined)
-  }, [compiled?.meta, rawScalars])
+  const queryKeys = useMemo(() => {
+    if (!compiled?.meta) return [] as string[]
+    return Object.keys(compiled.meta).filter((key) => key.startsWith('$'))
+  }, [compiled?.meta])
+  const [queriesLoaded, setQueriesLoaded] = useState(() => queryKeys.length === 0)
+
+  useEffect(() => {
+    setQueriesLoaded(queryKeys.length === 0)
+  }, [queryKeys.join('|')])
+
+  useEffect(() => {
+    if (queriesLoaded) return
+    if (!rawScalars) return
+    for (const key of queryKeys) {
+      if (rawScalars[key] !== undefined) {
+        setQueriesLoaded(true)
+        break
+      }
+    }
+  }, [rawScalars, queryKeys, queriesLoaded])
 
   if (compileError) {
     return (
@@ -132,7 +146,7 @@ export function AppView({ id }: { id: string }) {
 
   return (
     <div className="max-h-[90vh] overflow-y-auto">
-      {!hasLoadedQueries ? (
+      {!queriesLoaded ? (
         <div className="italic text-sm text-gray-600 p-4">Loading…</div>
       ) : (
         <RenderNodes nodes={nodes} globals={globals} windowId={id} queries={queriesForWindow} debug={debug} />
