@@ -84,7 +84,8 @@ class QueryRuntime {
       this.stop(windowId);
       // Extract $queries from meta
       const doc: any = { type: 'hypernote', name: String(windowId), ...meta };
-      const hasQueries = Object.keys(meta || {}).some(k => k.startsWith('$'));
+      const queryKeys = Object.keys(meta || {}).filter((k) => k.startsWith('$'))
+      const hasQueries = queryKeys.length > 0;
       if (!hasQueries) return; // nothing to start
       const ok = await this.ensureClient(relays);
       if (!ok) return; // quietly no-op if hypersauce not available
@@ -95,7 +96,6 @@ class QueryRuntime {
 
       // Seed pending markers for each declared query so UI can render loading fallbacks
       try {
-        const queryKeys = Object.keys(meta || {}).filter((key) => key.startsWith('$'))
         if (queryKeys.length) {
           const store = getDefaultStore()
           const atom = windowScalarsAtom(windowId)
