@@ -6,6 +6,44 @@ forms:
   note: ""
 state:
   profile_target: user.pubkey
+  docs:
+    ui_block: |
+      ```hstack.start
+      width: 320px
+      ```
+      ![avatar](https://placekitten.com/64/64)
+
+      ```vstack.start
+      ```
+      **\{{ user.profile?.name || 'Anonymous' }}**
+      _\{{ user.profile?.about || 'No bio yet.' }}_
+
+      ```button
+      text: Install example app
+      action: system.install_app
+      payload:
+        naddr: "naddr1...."
+      ```
+
+      ```vstack.end
+      ```
+      ```hstack.end
+      ```
+    each_block: |
+      ```each.start
+      from: queries.feed
+      as: item
+      ```
+      - \{{ item.content }}
+      ```each.end
+      ```
+    button_block: |
+      ```button
+      text: Post Note
+      action: actions.post
+      payload:
+        published_at: \{{ time.now }}
+      ```
 ---
 # Welcome to Hypernote OS
 
@@ -51,28 +89,7 @@ actions:
 
 ```markdown_editor
 readOnly: true
-value: |
-  ```hstack.start
-  width: 320px
-  ```
-  ![avatar](https://placekitten.com/64/64)
-
-  ```vstack.start
-  ```
-  **{{ user.profile?.name || 'Anonymous' }}**
-  _{{ user.profile?.about || 'No bio yet.' }}_
-
-  ```button
-  text: Install example app
-  action: system.install_app
-  payload:
-    naddr: "naddr1...."
-  ```
-
-  ```vstack.end
-  ```
-  ```hstack.end
-  ```
+value: {{ state.docs.ui_block }}
 ```
 
 - `hstack.start` / `vstack.start` create flex containers.
@@ -80,14 +97,7 @@ value: |
 
 ```markdown_editor
 readOnly: true
-value: |
-  ```each.start
-  from: queries.feed
-  as: item
-  ```
-  - {{ item.content }}
-  ```each.end
-  ```
+value: {{ state.docs.each_block }}
 ```
 
 ## Actions and System Hooks
@@ -98,13 +108,7 @@ value: |
 
 ```markdown_editor
 readOnly: true
-value: |
-  ```button
-  text: Post Note
-  action: actions.post
-  payload:
-    published_at: {{ time.now }}
-  ```
+value: {{ state.docs.button_block }}
 ```
 
 ## Tips
