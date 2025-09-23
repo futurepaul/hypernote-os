@@ -99,9 +99,10 @@ function InputNode({ text, globals, windowId, name, queries }: { text: string; g
   );
 }
 
-function MarkdownEditorNode({ data, windowId }: { data?: any; windowId: string }) {
+function MarkdownEditorNode({ data, windowId, globals, queries }: { data?: any; windowId: string; globals: any; queries: Record<string, any> }) {
   const readOnly = Boolean(data?.readOnly || data?.readonly);
-  const initialValue = typeof data?.value === 'string' ? data.value : '';
+  const defaultValueRaw = typeof data?.value === 'string' ? data.value : '';
+  const defaultValue = interpolateText(defaultValueRaw, globals, queries);
 
   const [formValues, setFormValues] = useAtom(formsAtom(windowId));
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -116,7 +117,15 @@ function MarkdownEditorNode({ data, windowId }: { data?: any; windowId: string }
   const placeholder = typeof data?.placeholder === 'string' ? data.placeholder : '';
 
   const liveValue = typeof formValues?.[fieldName] === 'string' ? formValues[fieldName] : '';
-  const editorValue = readOnly ? initialValue : liveValue;
+  const editorValue = readOnly ? defaultValue : (liveValue || defaultValue);
+
+  useEffect(() => {
+    if (readOnly) return;
+    if (!liveValue && defaultValue) {
+      setFormValues(prev => ({ ...(prev || {}), [fieldName]: defaultValue }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleChange = useCallback((val: string) => {
     if (readOnly) return;
@@ -128,6 +137,7 @@ function MarkdownEditorNode({ data, windowId }: { data?: any; windowId: string }
     const [instance] = OverType.init(containerRef.current, {
       value: editorValue,
       toolbar: false,
+      readOnly,
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
       fontSize: '14px',
       lineHeight: 1.5,
@@ -284,6 +294,8 @@ export function RenderNodes({ nodes, globals, windowId, queries, statuses, inlin
           key={n.id || key}
           data={n.data}
           windowId={windowId}
+          globals={globals}
+          queries={queries}
         />
       );
     }
