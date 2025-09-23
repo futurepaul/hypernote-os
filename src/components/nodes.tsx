@@ -159,7 +159,7 @@ function MarkdownEditorNode({ data, windowId }: { data?: any; windowId: string }
 
   const showPlaceholder = !readOnly && placeholder && !liveValue;
   const wrapperClass = readOnly
-    ? "relative border border-gray-300 rounded bg-white/10"
+    ? "relative"
     : "relative border border-gray-400 rounded bg-white";
 
   return (
@@ -179,6 +179,7 @@ function MarkdownEditorNode({ data, windowId }: { data?: any; windowId: string }
 
 function MarkdownViewerNode({ data, globals, queries }: { data?: any; globals: any; queries: Record<string, any> }) {
   const raw = typeof data?.value === 'string' ? data.value : '';
+  const height = typeof data?.height === 'number' ? data.height : 200;
   const value = useMemo(() => interpolateText(raw, globals, queries), [raw, globals, queries]);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<any>(null);
@@ -208,10 +209,11 @@ function MarkdownViewerNode({ data, globals, queries }: { data?: any; globals: a
   }, [value]);
 
   return (
-    <div className="relative border border-gray-300 rounded bg-white/10">
+    <div className="relative">
       <div
         ref={containerRef}
-        className="min-h-[140px] max-h-[360px] overflow-y-auto px-3 py-2 text-sm text-gray-900"
+        className="px-3 py-2 text-sm text-gray-900 overflow-y-auto"
+        style={{ minHeight: height, maxHeight: Math.max(height, 360) }}
       />
     </div>
   );
