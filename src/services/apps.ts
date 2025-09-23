@@ -48,13 +48,19 @@ export async function installByNaddr(naddr: string, relays: string[]): Promise<{
   console.log('[installByNaddr] decoded', { kind, pubkey, identifier })
   // Build a tiny live query doc to fetch the app event content
   const metaDoc: any = {
-    '$app': {
-      kinds: [kind],
-      authors: [pubkey],
-      '#d': [identifier],
-      limit: 1,
-      pipe: [ 'first', { json: { from: 'content' } } ]
-    }
+    hypernote: { name: 'installer' },
+    queries: {
+      app: {
+        kinds: [kind],
+        authors: [pubkey],
+        '#d': [identifier],
+        limit: 1,
+        pipe: [
+          'first',
+          { json: { from: 'content', as: 'parsed' } },
+        ],
+      },
+    },
   }
   const client = getDefaultStore().get(hypersauceClientAtom) as any
   if (!client) throw new Error('Hypersauce client not initialized')
@@ -70,7 +76,7 @@ export async function installByNaddr(naddr: string, relays: string[]): Promise<{
     subscription = sub.subscribe({
       next: (map: Map<string, any>) => {
         try {
-      const raw = map.get('$app')
+      const raw = map.get('app')
       console.log('[installByNaddr] snapshot', raw)
       if (!raw) return
       const obj = typeof raw === 'string' ? safeJson(raw) : raw

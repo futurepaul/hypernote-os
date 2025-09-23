@@ -80,6 +80,8 @@ export const HypernoteMetaSchema = z
     hypernote: HypernoteSectionSchema.optional(),
     queries: z.record(z.string(), QueryDefinitionSchema).optional(),
     actions: z.record(z.string(), ActionDefinitionSchema).optional(),
+    forms: z.record(z.string(), z.unknown()).optional(),
+    state: z.record(z.string(), z.unknown()).optional(),
     components: z.record(z.string(), z.unknown()).optional(),
     events: z.record(z.string(), z.unknown()).optional(),
   })

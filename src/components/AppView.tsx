@@ -4,9 +4,11 @@ import { useAtomValue, useSetAtom } from 'jotai'
 import { windowQueryStreamsAtom } from '../state/queriesAtoms'
 import { docAtom, userAtom, relaysAtom, windowTimeAtom, debugAtom, compiledDocAtom } from '../state/appAtoms'
 import { formsAtom } from '../state/formsAtoms'
+import { docStateAtom } from '../state/docStateAtoms'
 import { queryRuntime } from '../queries/runtime'
 import { docActionsAtom, buildDocActionMap } from '../state/actions'
 import { RenderNodes } from './nodes'
+import { parseReference, resolveReference, type ReferenceScope } from '../interp/reference'
 
 export function AppView({ id }: { id: string }) {
   // Select only the doc text for this window to avoid global re-renders
@@ -35,15 +37,21 @@ export function AppView({ id }: { id: string }) {
   const globalsUser = useAtomValue(userAtom);
   const timeNow = useAtomValue(windowTimeAtom(id));
   const queryStreams = useAtomValue(windowQueryStreamsAtom(id));
-  const forms = useAtomValue(formsAtom(id))
+  const formsAtomRef = useMemo(() => formsAtom(id), [id])
+  const forms = useAtomValue(formsAtomRef)
+  const setForms = useSetAtom(formsAtomRef)
+  const stateAtomRef = useMemo(() => docStateAtom(id), [id])
+  const docState = useAtomValue(stateAtomRef)
+  const setDocState = useSetAtom(stateAtomRef)
   const globals = useMemo(() => {
     const timeObj = { now: timeNow };
     return {
       user: globalsUser,
       time: timeObj,
       form: forms,
+      state: docState,
     };
-  }, [globalsUser, timeNow, forms]);
+  }, [globalsUser, timeNow, forms, docState]);
   // Fallback: if Hypersauce queries are unavailable, derive $profile from user.profile
   // Per-render logging to trace causes
   const renderCount = useRef(0);
@@ -68,8 +76,58 @@ export function AppView({ id }: { id: string }) {
     if (debug) console.log(`[Cause] ${id}: user.pubkey`, globalsUser?.pubkey);
   }, [globalsUser?.pubkey, debug]);
   useEffect(() => {
+    if (debug) console.log(`[Cause] ${id}: state keys`, Object.keys(docState || {}));
+  }, [docState, debug, id]);
+  useEffect(() => {
     if (debug) console.log(`[Cause] ${id}: query streams`, Object.keys(queryStreams || {}));
   }, [queryStreams, debug]);
+  useEffect(() => {
+    if (!compiled || compileError) return;
+    const defaults = compiled.meta?.forms;
+    if (!defaults || typeof defaults !== 'object') return;
+    const scope: ReferenceScope = {
+      globals: { user: globalsUser, time: { now: timeNow } },
+      queries: {},
+    };
+    setForms(prev => {
+      const prevObj = prev || {};
+      let changed = false;
+      const next = { ...prevObj };
+      for (const [key, raw] of Object.entries(defaults)) {
+        if (next[key] !== undefined && next[key] !== '') continue;
+        const resolved = resolveMetaValue(raw, scope);
+        if (resolved !== undefined && resolved !== next[key]) {
+          next[key] = resolved;
+          changed = true;
+        }
+      }
+      return changed ? next : prevObj;
+    });
+  }, [compiled, compileError, setForms, globalsUser, timeNow]);
+
+  useEffect(() => {
+    if (!compiled || compileError) return;
+    const defaults = compiled.meta?.state;
+    if (!defaults || typeof defaults !== 'object') return;
+    const scope: ReferenceScope = {
+      globals: { user: globalsUser, time: { now: timeNow } },
+      queries: {},
+    };
+    setDocState(prev => {
+      const prevObj = prev || {};
+      let changed = false;
+      const next = { ...prevObj };
+      for (const [key, raw] of Object.entries(defaults)) {
+        if (next[key] !== undefined) continue;
+        const resolved = resolveMetaValue(raw, scope);
+        if (resolved !== undefined && resolved !== next[key]) {
+          next[key] = resolved;
+          changed = true;
+        }
+      }
+      return changed ? next : prevObj;
+    });
+  }, [compiled, compileError, setDocState, globalsUser, timeNow]);
 
   // No artificial tick; re-render comes from globals/$time.now store updates
 
@@ -80,7 +138,7 @@ export function AppView({ id }: { id: string }) {
     const userContext = globals.user?.pubkey ? { pubkey: globals.user.pubkey } : undefined
     const ctx: Record<string, any> = {}
     if (userContext) ctx.user = userContext
-    if (forms && Object.keys(forms || {}).length > 0) ctx.form = forms
+    if (docState && Object.keys(docState || {}).length > 0) ctx.state = docState
     queryRuntime.start({
       windowId: id,
       meta: compiled.meta,
@@ -89,7 +147,7 @@ export function AppView({ id }: { id: string }) {
       onScalars: () => {},
     }).catch(e => console.warn('[Hypersauce] start failed', e))
     return () => queryRuntime.stop(id)
-  }, [id, compiled, compileError, globals.user.pubkey, relays])
+  }, [id, compiled, compileError, globals.user?.pubkey, relays, docState])
 
   const { data: queriesForWindow, statuses: queryStatusMap } = useQuerySnapshotState(queryStreams);
 
@@ -173,6 +231,27 @@ function astUsesGlobal(nodes: UiNode[], target: string): boolean {
     }
   }
   return false;
+}
+
+function resolveMetaValue(value: any, scope: ReferenceScope): any {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed) {
+      const ref = parseReference(trimmed);
+      if (ref) {
+        const resolved = resolveReference(trimmed, scope);
+        return resolved !== undefined ? resolved : undefined;
+      }
+    }
+    return value;
+  }
+  if (Array.isArray(value)) return value.map(item => resolveMetaValue(item, scope));
+  if (value && typeof value === 'object') {
+    const out: Record<string, any> = {};
+    for (const [key, val] of Object.entries(value)) out[key] = resolveMetaValue(val, scope);
+    return out;
+  }
+  return value;
 }
 
 export function parseFrontmatterName(doc: string): string | undefined {

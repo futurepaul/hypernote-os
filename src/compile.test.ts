@@ -40,8 +40,10 @@ describe("compiler", () => {
     expect(meta.hypernote?.name).toBe("Profile");
     const inputs = ast.filter(n => n.type === "input");
     const buttons = ast.filter(n => n.type === "button");
-    expect(inputs.length).toBe(0);
-    expect(buttons.length).toBe(0);
+    expect(inputs.length).toBe(1);
+    expect(buttons.length).toBe(2);
+    expect(meta.forms?.pubkey).toBe('user.pubkey');
+    expect(meta.state?.profile_target).toBe('user.pubkey');
   });
   test("rejects raw html", () => {
     const bad = `---\nname: Bad\n---\n<div>html</div>`;

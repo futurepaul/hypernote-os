@@ -1,13 +1,15 @@
 import { useMemo, useCallback } from 'react'
-import { atom, useAtomValue } from 'jotai'
+import { atom, useAtomValue, useSetAtom } from 'jotai'
 import { atomFamily } from 'jotai/utils'
 import { getDefaultStore } from 'jotai'
 import { relaysAtom, userAtom, docsAtom, openWindowAtom, bringWindowToFrontAtom, editorSelectionAtom } from './appAtoms'
 import { formsAtom } from './formsAtoms'
+import { docStateAtom } from './docStateAtoms'
 import { hypersauceClientAtom } from './hypersauce'
 import { SimplePool, type Event, nip19, getPublicKey } from 'nostr-tools'
 import { interpolate as interpolateTemplate } from '../interp/interpolate'
 import { isDefaultDocId, loadUserDocs, saveUserDocs } from './docs'
+import { parseReference, resolveReference, type ReferenceScope } from '../interp/reference'
 
 type ActionScope = {
   globals: any
@@ -21,8 +23,9 @@ type ActionContext = {
 }
 
 export type DocActionDefinition = {
-  template: any
-  formKeys: string[]
+  template?: any
+  formUpdates?: Record<string, any>
+  stateUpdates?: Record<string, any>
 }
 
 const emptyDocActionsAtom = atom<Record<string, DocActionDefinition>>({})
@@ -152,6 +155,10 @@ export function useDocAction(name?: string, windowId?: string) {
   const docActionsAtomRef = useMemo(() => (windowId ? docActionsAtom(windowId) : emptyDocActionsAtom), [windowId])
   const docActions = useAtomValue(docActionsAtomRef)
   const client = useAtomValue(hypersauceClientAtom) as any
+  const formsAtomRef = useMemo(() => formsAtom(windowId ?? '__doc__'), [windowId])
+  const setForms = useSetAtom(formsAtomRef)
+  const stateAtomRef = useMemo(() => docStateAtom(windowId ?? '__doc__'), [windowId])
+  const setDocState = useSetAtom(stateAtomRef)
   const docAction = normalized ? docActions[normalized] : undefined
 
   const run = useCallback(async (payload?: any, ctx?: ActionContext) => {
@@ -159,37 +166,56 @@ export function useDocAction(name?: string, windowId?: string) {
       console.warn('Unknown doc action', name)
       return
     }
-    if (!client || typeof client.publishEvent !== 'function') {
-      console.warn(`[${normalized}] Hypersauce client not initialized`)
-      alert('Cannot publish: Hypersauce client not ready')
-      return
-    }
-    const scope: ActionScope = {
-      globals: ctx?.globals ?? {},
+    const baseGlobals = ctx?.globals ?? {}
+    const scopeGlobals = { ...baseGlobals, payload }
+    const actionScope: ActionScope = {
+      globals: scopeGlobals,
       queries: ctx?.queries ?? {},
     }
-    const templateClone = deepClone(docAction.template)
-    const interpolatedTemplate = interpolateActionValue(templateClone, scope)
-    const pipeSpec = Array.isArray((interpolatedTemplate as any).pipe) ? (interpolatedTemplate as any).pipe : undefined
-    if (pipeSpec) delete (interpolatedTemplate as any).pipe
-    const payloadInterpolated = payload != null ? interpolateActionValue(deepClone(payload), scope) : undefined
-    const finalEvent: Record<string, any> = {
-      ...interpolatedTemplate,
-      ...(payloadInterpolated || {}),
+    const refScope: ReferenceScope = {
+      globals: scopeGlobals,
+      queries: ctx?.queries ?? {},
     }
-    const pipedEvent = pipeSpec && pipeSpec.length ? applyActionPipe(finalEvent, pipeSpec) : finalEvent
-    coerceEventShape(pipedEvent)
 
-    const result = await client.publishEvent(pipedEvent)
+    let result: any = undefined
+    if (docAction.template) {
+      if (!client || typeof client.publishEvent !== 'function') {
+        console.warn(`[${normalized}] Hypersauce client not initialized`)
+        alert('Cannot publish: Hypersauce client not ready')
+        return
+      }
+      const templateClone = deepClone(docAction.template)
+      const interpolatedTemplate = interpolateActionValue(templateClone, actionScope)
+      const pipeSpec = Array.isArray((interpolatedTemplate as any)?.pipe) ? (interpolatedTemplate as any).pipe : undefined
+      if (pipeSpec) delete (interpolatedTemplate as any).pipe
+      const payloadInterpolated = payload != null ? interpolateActionValue(deepClone(payload), actionScope) : undefined
+      const finalEvent: Record<string, any> = {
+        ...(typeof interpolatedTemplate === 'object' ? interpolatedTemplate : {}),
+        ...(payloadInterpolated && typeof payloadInterpolated === 'object' ? payloadInterpolated : {}),
+      }
+      const pipedEvent = pipeSpec && pipeSpec.length ? applyActionPipe(finalEvent, pipeSpec) : finalEvent
+      coerceEventShape(pipedEvent)
+      result = await client.publishEvent(pipedEvent)
+    }
+
     const targetWindowId = ctx?.windowId ?? windowId
     if (targetWindowId) {
-      const keys = new Set(docAction.formKeys)
-      if (payloadInterpolated !== undefined) collectFormKeysInto(payloadInterpolated, keys)
-      clearFormFields(targetWindowId, keys)
-      // TODO: surface publish result (event id) to UI so apps can react to their own posts
+      if (docAction.formUpdates) {
+        const resolvedForms = evaluateActionUpdates(docAction.formUpdates, refScope)
+        if (resolvedForms) {
+          setForms(prev => ({ ...(prev || {}), ...resolvedForms }))
+        }
+      }
+      if (docAction.stateUpdates) {
+        const resolvedState = evaluateActionUpdates(docAction.stateUpdates, refScope)
+        if (resolvedState) {
+          setDocState(prev => ({ ...(prev || {}), ...resolvedState }))
+        }
+      }
     }
+
     return result
-  }, [docAction, client, name, normalized, windowId])
+  }, [docAction, client, name, normalized, windowId, setForms, setDocState])
 
   return docAction ? run : undefined
 }
@@ -215,30 +241,32 @@ export function buildDocActionMap(actions: any): Record<string, DocActionDefinit
     if (!spec || typeof spec !== 'object') continue
     const normalized = normalizeActionName(rawName)
     if (!normalized) continue
-    const { template, extraFormKeys } = normalizeActionSpec(spec as Record<string, any>)
-    const keySet = new Set<string>()
-    collectFormKeysInto(template, keySet)
-    for (const extra of extraFormKeys) keySet.add(extra)
-    out[normalized] = { template, formKeys: Array.from(keySet) }
+    const { template, formUpdates, stateUpdates } = normalizeActionSpec(spec as Record<string, any>)
+    out[normalized] = {
+      ...(template ? { template } : {}),
+      ...(formUpdates ? { formUpdates } : {}),
+      ...(stateUpdates ? { stateUpdates } : {}),
+    }
   }
   return out
 }
 
-function normalizeActionSpec(raw: Record<string, any>): { template: any; extraFormKeys: string[] } {
+function normalizeActionSpec(raw: Record<string, any>): { template?: any; formUpdates?: Record<string, any>; stateUpdates?: Record<string, any> } {
   const clone = deepClone(raw)
-  const after = clone?.after
-  if (clone && Object.prototype.hasOwnProperty.call(clone, 'after')) delete clone.after
-  const extraFormKeys: string[] = []
-  if (after && typeof after === 'object') {
-    const clearList = Array.isArray((after as any).clear) ? (after as any).clear : []
-    for (const item of clearList) {
-      if (typeof item === 'string') {
-        const key = sanitizeFormKey(item)
-        if (key) extraFormKeys.push(key)
-      }
-    }
+  let formUpdates: Record<string, any> | undefined
+  let stateUpdates: Record<string, any> | undefined
+  if (clone && Object.prototype.hasOwnProperty.call(clone, 'forms')) {
+    const forms = clone.forms
+    delete clone.forms
+    if (forms && typeof forms === 'object') formUpdates = deepClone(forms)
   }
-  return { template: clone, extraFormKeys }
+  if (clone && Object.prototype.hasOwnProperty.call(clone, 'state')) {
+    const state = clone.state
+    delete clone.state
+    if (state && typeof state === 'object') stateUpdates = deepClone(state)
+  }
+  const template = Object.keys(clone || {}).length ? clone : undefined
+  return { template, formUpdates, stateUpdates }
 }
 
 function deepClone<T>(value: T): T {
@@ -249,53 +277,6 @@ function deepClone<T>(value: T): T {
     return out as T
   }
   return value
-}
-
-function collectFormKeysInto(value: any, target: Set<string>) {
-  if (value == null) return
-  if (typeof value === 'string') {
-    addFormKeysFromString(value, target)
-    return
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) collectFormKeysInto(item, target)
-    return
-  }
-  if (typeof value === 'object') {
-    for (const entry of Object.values(value)) collectFormKeysInto(entry, target)
-  }
-}
-
-function addFormKeysFromString(text: string, target: Set<string>) {
-  if (!text) return
-  const moustache = /{{\s*([^}]+)\s*}}/g
-  let match: RegExpExecArray | null
-  while ((match = moustache.exec(text)) !== null) {
-    const expr = match[1] ?? ''
-    addFormKeysFromExpression(expr, target)
-  }
-  addFormKeysFromExpression(text, target)
-}
-
-function addFormKeysFromExpression(expr: string, target: Set<string>) {
-  if (!expr) return
-  const regex = /\$form\.([A-Za-z0-9_-]+)/g
-  let match: RegExpExecArray | null
-  while ((match = regex.exec(expr)) !== null) {
-    const key = sanitizeFormKey(match[1] ?? '')
-    if (key) target.add(key)
-  }
-}
-
-function sanitizeFormKey(raw: string): string | null {
-  if (!raw) return null
-  let key = raw.trim()
-  if (!key) return null
-  if (key.startsWith('$form.')) key = key.slice('$form.'.length)
-  else if (key.startsWith('form.')) key = key.slice('form.'.length)
-  if (key.startsWith('$')) key = key.slice(1)
-  key = key.replace(/[^A-Za-z0-9_-]/g, (char) => (char === '.' ? '' : ''))
-  return key.length ? key : null
 }
 
 function interpolateActionValue(value: any, scope: ActionScope): any {
@@ -327,28 +308,6 @@ function coerceEventShape(event: Record<string, any>) {
       if (Array.isArray(tag)) return tag.map(part => (typeof part === 'string' ? part : part != null ? String(part) : ''))
       return tag
     })
-  }
-}
-
-function clearFormFields(windowId: string, keys: Set<string>) {
-  if (!keys.size) return
-  const store = getDefaultStore()
-  const atomRef = formsAtom(windowId)
-  try {
-    const current = store.get(atomRef) || {}
-    let changed = false
-    const next: Record<string, any> = { ...(current || {}) }
-    for (const rawKey of keys) {
-      const key = sanitizeFormKey(rawKey)
-      if (!key) continue
-      if (next[key] !== '') {
-        next[key] = ''
-        changed = true
-      }
-    }
-    if (changed) store.set(atomRef, next)
-  } catch (e) {
-    console.warn('clearFormFields failed', e)
   }
 }
 
@@ -398,6 +357,32 @@ function extractPubkey(raw: unknown): string | null {
 
 function bytesToHex(data: Uint8Array): string {
   return Array.from(data).map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+function evaluateActionUpdates(record: Record<string, any>, scope: ReferenceScope): Record<string, any> | null {
+  const entries = Object.entries(record || {})
+  if (!entries.length) return null
+  const out: Record<string, any> = {}
+  for (const [key, value] of entries) {
+    const resolved = resolveActionValue(value, scope)
+    if (resolved !== undefined) out[key] = resolved
+  }
+  return Object.keys(out).length ? out : null
+}
+
+function resolveActionValue(value: any, scope: ReferenceScope): any {
+  if (typeof value === 'string') {
+    const parsed = parseReference(value)
+    if (parsed) return resolveReference(value, scope)
+    return value
+  }
+  if (Array.isArray(value)) return value.map(item => resolveActionValue(item, scope))
+  if (value && typeof value === 'object') {
+    const out: Record<string, any> = {}
+    for (const [key, val] of Object.entries(value)) out[key] = resolveActionValue(val, scope)
+    return out
+  }
+  return value
 }
 
 function setUserPubkey(store: ReturnType<typeof getDefaultStore>, pubkey: string) {

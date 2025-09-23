@@ -7,7 +7,7 @@ import { interpolate as interp } from "../interp/interpolate";
 import { useAction } from "../state/actions";
 import { renderMarkdownAst, type MarkdownScope } from "./MarkdownRenderer";
 import { sanitizeStackConfig } from "../lib/layout";
-import { resolveReference, referenceQueryId } from "../interp/reference";
+import { resolveReference, referenceQueryId, isReferenceExpression } from "../interp/reference";
 
 export type Node = UiNode;
 
@@ -120,19 +120,23 @@ function ButtonNode({ text, globals, action, windowId, queries, payloadSpec }: {
 }
 
 function InputNode({ text, globals, windowId, name, queries }: { text: string; globals: any; windowId: string; name?: string; queries: Record<string, any> }) {
-  const [, setForm] = useAtom(formsAtom(windowId));
-  const [val, setVal] = useState("");
-  const setPubkey = useAction('@set_pubkey', windowId);
+  const [formValues, setFormValues] = useAtom(formsAtom(windowId));
+  const [localValue, setLocalValue] = useState("");
   const ph = interpolateText(text || "", globals, queries);
+  const fieldName = typeof name === 'string' && name.length ? name : undefined;
+  const value = fieldName ? String((formValues || {})[fieldName] ?? '') : localValue;
+
   const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = e.target.value;
-    setVal(v);
-    if (name) setForm((prev: any) => ({ ...(prev || {}), [name]: v }));
-    setPubkey(v, { windowId, globals, queries }).catch(err => console.warn('set_pubkey error', err));
+    if (fieldName) {
+      setFormValues((prev: Record<string, any> | undefined) => ({ ...(prev || {}), [fieldName]: v }));
+    } else {
+      setLocalValue(v);
+    }
   };
   return (
     <input
-      value={val}
+      value={value}
       onChange={onChange}
       placeholder={ph}
       className="border border-gray-400 rounded px-2 py-1 text-gray-900 bg-white"
@@ -251,12 +255,29 @@ function EachNode({ node, globals, windowId, queries, statuses, debug = false }:
 
 function buildPayload(spec: any, globals: any, queries: Record<string, any>) {
   if (!spec || typeof spec !== 'object') return undefined;
-  const out: Record<string, any> = {};
-  for (const [key, value] of Object.entries(spec)) {
-    if (typeof value === 'string') out[key] = interpolateText(value, globals, queries);
-    else out[key] = value;
-  }
-  return out;
+
+  const scope = { globals, queries };
+
+  const transform = (value: any): any => {
+    if (typeof value === 'string') {
+      if (value.includes('{{')) return interpolateText(value, globals, queries);
+      const trimmed = value.trim();
+      if (trimmed && isReferenceExpression(trimmed)) {
+        const resolved = resolveReference(trimmed, scope);
+        return resolved !== undefined ? resolved : value;
+      }
+      return value;
+    }
+    if (Array.isArray(value)) return value.map(transform);
+    if (value && typeof value === 'object') {
+      const inner: Record<string, any> = {};
+      for (const [k, v] of Object.entries(value)) inner[k] = transform(v);
+      return inner;
+    }
+    return value;
+  };
+
+  return transform(spec);
 }
 
 function stackStyleFromData(data: any): CSSProperties | undefined {
