@@ -101,14 +101,7 @@ function InputNode({ text, globals, windowId, name, queries }: { text: string; g
 
 function MarkdownEditorNode({ data, windowId }: { data?: any; windowId: string }) {
   const readOnly = Boolean(data?.readOnly || data?.readonly);
-  if (readOnly) {
-    const staticValue = typeof data?.value === 'string' ? data.value : '';
-    return (
-      <pre className="bg-white/10 text-sm text-gray-900 rounded border border-gray-300 overflow-x-auto px-3 py-2">
-        <code className="font-mono whitespace-pre-wrap leading-relaxed">{staticValue}</code>
-      </pre>
-    );
-  }
+  const initialValue = typeof data?.value === 'string' ? data.value : '';
 
   const [formValues, setFormValues] = useAtom(formsAtom(windowId));
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -121,42 +114,56 @@ function MarkdownEditorNode({ data, windowId }: { data?: any; windowId: string }
     return normalized || 'editor';
   }, [rawId]);
   const placeholder = typeof data?.placeholder === 'string' ? data.placeholder : '';
-  const value = typeof formValues?.[fieldName] === 'string' ? formValues[fieldName] : '';
+
+  const liveValue = typeof formValues?.[fieldName] === 'string' ? formValues[fieldName] : '';
+  const editorValue = readOnly ? initialValue : liveValue;
 
   const handleChange = useCallback((val: string) => {
+    if (readOnly) return;
     setFormValues(prev => ({ ...(prev || {}), [fieldName]: val }));
-  }, [fieldName, setFormValues]);
+  }, [fieldName, readOnly, setFormValues]);
 
   useEffect(() => {
     if (!containerRef.current) return;
     const [instance] = OverType.init(containerRef.current, {
-      value,
+      value: editorValue,
       toolbar: false,
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
       fontSize: '14px',
       lineHeight: 1.5,
-      onChange: handleChange,
+      onChange: readOnly ? undefined : handleChange,
     } as any);
     editorRef.current = instance;
+
+    if (readOnly && containerRef.current) {
+      const editable = containerRef.current.querySelector('[contenteditable="true"]') as HTMLElement | null;
+      if (editable) {
+        editable.setAttribute('contenteditable', 'false');
+        editable.classList.add('pointer-events-none', 'select-text');
+      }
+    }
+
     return () => {
       try { editorRef.current?.destroy?.(); } catch {}
       editorRef.current = null;
     };
-  }, [handleChange]);
+  }, [editorValue, handleChange, readOnly]);
 
   useEffect(() => {
-    if (editorRef.current && typeof editorRef.current.getValue === 'function') {
-      const current = editorRef.current.getValue();
-      if (current !== value) {
-        editorRef.current.setValue(value);
-      }
+    if (!editorRef.current || typeof editorRef.current.getValue !== 'function') return;
+    const current = editorRef.current.getValue();
+    if (current !== editorValue) {
+      editorRef.current.setValue(editorValue);
     }
-  }, [value]);
+  }, [editorValue]);
 
-  const showPlaceholder = placeholder && !value;
+  const showPlaceholder = !readOnly && placeholder && !liveValue;
+  const wrapperClass = readOnly
+    ? "relative border border-gray-300 rounded bg-white/10"
+    : "relative border border-gray-400 rounded bg-white";
 
   return (
-    <div className="relative border border-gray-400 rounded bg-white">
+    <div className={wrapperClass}>
       {showPlaceholder && (
         <div className="pointer-events-none absolute inset-3 text-gray-500 text-sm select-none">
           {placeholder}
