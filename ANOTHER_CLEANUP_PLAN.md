@@ -44,10 +44,10 @@ Progress summary
 - ✅ `$` translators (`normalizeQueryDefinition`, `resolveDollar*`) removed; runtime now hands `queries.*` through untouched.
 - ✅ Hypersauce exposes per-query observables (`composeDocQueries`), and the runtime feeds them into Jotai instead of managing snapshots by hand.
 - ✅ AppView subscribes to those streams via `useQuerySnapshotState`, keeping the “Loading…” fallback without manual timers.
-- ❌ No new tests around the observable flow.
+- ✅ Regression test covers the observable wiring end-to-end (`runtime.test.ts`).
 
 Remaining tasks
-1. Add regression tests covering the observable flow and `$`-free references.
+*None for this workstream.*
 
 ## Workstream 4 — Actions Architecture
 **Goal:** Clearly separate OS/system actions from app-defined actions while keeping invocation ergonomics consistent.
