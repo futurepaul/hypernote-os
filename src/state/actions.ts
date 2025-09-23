@@ -80,7 +80,14 @@ const systemActionHandlers: Record<string, SystemActionHandler> = {
   },
   install_app: async ({ payload, store }) => {
     const relays = store.get(relaysAtom) || []
-    const naddr = normalizeNaddrPayload(payload)
+    let naddr: string | null = null
+    if (typeof payload === 'string') {
+      const trimmed = payload.trim()
+      naddr = trimmed ? trimmed : null
+    } else if (payload && typeof payload === 'object') {
+      const candidate = (payload as any).naddr ?? (payload as any).value
+      if (typeof candidate === 'string' && candidate.trim()) naddr = candidate.trim()
+    }
     if (!naddr) {
       console.warn('@install_app: missing naddr payload')
       return
@@ -107,36 +114,39 @@ const systemActionHandlers: Record<string, SystemActionHandler> = {
   },
 }
 
-export function normalizeActionName(name?: string) {
-  if (!name) return undefined as unknown as string
-  let n = String(name).trim()
-  if (n.startsWith('@')) n = n.slice(1)
-  // camelCase → snake_case
-  n = n.replace(/([A-Z])/g, '_$1').toLowerCase()
-  // dashes/spaces → underscore; collapse repeats
-  n = n.replace(/[\-\s]+/g, '_').replace(/__+/g, '_')
-  if (n.startsWith('actions.')) n = n.slice('actions.'.length)
-  if (n.startsWith('system.')) n = n.slice('system.'.length)
-  // alias map
-  const aliases: Record<string, string> = {
-    setpubkey: 'set_pubkey',
-    set_pubkey: 'set_pubkey',
-    loadprofile: 'load_profile',
-    load_profile: 'load_profile',
-    install: 'install_app',
-    installapp: 'install_app',
-    install_app: 'install_app',
+type ActionReference = { scope: 'system' | 'actions'; name: string }
+
+function parseActionReference(raw?: string): ActionReference | null {
+  if (!raw) return null
+  let value = String(raw).trim()
+  if (!value) return null
+  if (value.startsWith('@')) {
+    console.warn('[actions] Legacy "@" prefix is deprecated; use system.* or actions.* syntax instead.')
+    value = value.slice(1).trim()
+    if (!value) return null
   }
-  return aliases[n] || n
+  if (value.startsWith('system.')) {
+    const name = value.slice('system.'.length).trim()
+    return isValidActionKey(name) ? { scope: 'system', name } : null
+  }
+  if (value.startsWith('actions.')) {
+    const name = value.slice('actions.'.length).trim()
+    return isValidActionKey(name) ? { scope: 'actions', name } : null
+  }
+  if (!value.includes('.')) {
+    return isValidActionKey(value) ? { scope: 'actions', name: value } : null
+  }
+  return null
 }
+
 export function useSystemAction(name?: string, windowId?: string) {
-  const normalized = useMemo(() => (name ? normalizeActionName(name) : undefined), [name])
-  const handler = normalized ? systemActionHandlers[normalized] : undefined
+  const ref = useMemo(() => parseActionReference(name), [name])
+  const handler = ref?.scope === 'system' ? systemActionHandlers[ref.name] : undefined
   const store = getDefaultStore()
 
   const run = useCallback(async (payload?: any, ctx?: ActionContext) => {
     if (!handler) {
-      console.warn('Unknown system action', name)
+      if (name) console.warn('Unknown system action', name)
       return
     }
     const scope: ActionScope = {
@@ -151,7 +161,8 @@ export function useSystemAction(name?: string, windowId?: string) {
 }
 
 export function useDocAction(name?: string, windowId?: string) {
-  const normalized = useMemo(() => (name ? normalizeActionName(name) : undefined), [name])
+  const ref = useMemo(() => parseActionReference(name), [name])
+  const actionName = ref?.scope === 'actions' ? ref.name : undefined
   const docActionsAtomRef = useMemo(() => (windowId ? docActionsAtom(windowId) : emptyDocActionsAtom), [windowId])
   const docActions = useAtomValue(docActionsAtomRef)
   const client = useAtomValue(hypersauceClientAtom) as any
@@ -159,11 +170,11 @@ export function useDocAction(name?: string, windowId?: string) {
   const setForms = useSetAtom(formsAtomRef)
   const stateAtomRef = useMemo(() => docStateAtom(windowId ?? '__doc__'), [windowId])
   const setDocState = useSetAtom(stateAtomRef)
-  const docAction = normalized ? docActions[normalized] : undefined
+  const docAction = actionName ? docActions[actionName] : undefined
 
   const run = useCallback(async (payload?: any, ctx?: ActionContext) => {
-    if (!docAction) {
-      console.warn('Unknown doc action', name)
+    if (!docAction || !actionName) {
+      if (name) console.warn('Unknown doc action', name)
       return
     }
     const baseGlobals = ctx?.globals ?? {}
@@ -180,7 +191,7 @@ export function useDocAction(name?: string, windowId?: string) {
     let result: any = undefined
     if (docAction.template) {
       if (!client || typeof client.publishEvent !== 'function') {
-        console.warn(`[${normalized}] Hypersauce client not initialized`)
+        console.warn(`[${actionName}] Hypersauce client not initialized`)
         alert('Cannot publish: Hypersauce client not ready')
         return
       }
@@ -215,58 +226,49 @@ export function useDocAction(name?: string, windowId?: string) {
     }
 
     return result
-  }, [docAction, client, name, normalized, windowId, setForms, setDocState])
+  }, [docAction, actionName, client, name, windowId, setForms, setDocState])
 
   return docAction ? run : undefined
 }
 
 export function useAction(name?: string, windowId?: string) {
-  const systemRunner = useSystemAction(name, windowId)
-  const docRunner = useDocAction(name, windowId)
+  const ref = useMemo(() => parseActionReference(name), [name])
+  const systemRunner = useSystemAction(ref?.scope === 'system' ? name : undefined, windowId)
+  const docRunner = useDocAction(ref?.scope === 'actions' ? name : undefined, windowId)
 
   return useCallback(async (payload?: any, ctx?: ActionContext) => {
     const mergedCtx: ActionContext | undefined = ctx
       ? { ...ctx, windowId: ctx.windowId ?? windowId }
       : (windowId ? { windowId } : undefined)
-    if (systemRunner) return systemRunner(payload, mergedCtx)
-    if (docRunner) return docRunner(payload, mergedCtx)
+    if (ref?.scope === 'system' && systemRunner) return systemRunner(payload, mergedCtx)
+    if (ref?.scope === 'actions' && docRunner) return docRunner(payload, mergedCtx)
     console.warn('Unknown action', name)
-  }, [systemRunner, docRunner, name, windowId])
+  }, [ref?.scope, systemRunner, docRunner, name, windowId])
 }
 
 export function buildDocActionMap(actions: any): Record<string, DocActionDefinition> {
   if (!actions || typeof actions !== 'object') return {}
   const out: Record<string, DocActionDefinition> = {}
   for (const [rawName, spec] of Object.entries(actions)) {
-    if (!spec || typeof spec !== 'object') continue
-    const normalized = normalizeActionName(rawName)
-    if (!normalized) continue
-    const { template, formUpdates, stateUpdates } = normalizeActionSpec(spec as Record<string, any>)
-    out[normalized] = {
+    if (!isValidActionKey(rawName)) {
+      console.warn(`[actions] Invalid doc action key "${rawName}"`)
+      continue
+    }
+    if (!isPlainObject(spec)) {
+      console.warn(`[actions] Expected doc action "${rawName}" to be an object`)
+      continue
+    }
+    const templateSource = deepClone(spec as Record<string, any>)
+    const formUpdates = extractPlainObject(templateSource, 'forms')
+    const stateUpdates = extractPlainObject(templateSource, 'state')
+    const template = Object.keys(templateSource).length ? templateSource : undefined
+    out[rawName] = {
       ...(template ? { template } : {}),
       ...(formUpdates ? { formUpdates } : {}),
       ...(stateUpdates ? { stateUpdates } : {}),
     }
   }
   return out
-}
-
-function normalizeActionSpec(raw: Record<string, any>): { template?: any; formUpdates?: Record<string, any>; stateUpdates?: Record<string, any> } {
-  const clone = deepClone(raw)
-  let formUpdates: Record<string, any> | undefined
-  let stateUpdates: Record<string, any> | undefined
-  if (clone && Object.prototype.hasOwnProperty.call(clone, 'forms')) {
-    const forms = clone.forms
-    delete clone.forms
-    if (forms && typeof forms === 'object') formUpdates = deepClone(forms)
-  }
-  if (clone && Object.prototype.hasOwnProperty.call(clone, 'state')) {
-    const state = clone.state
-    delete clone.state
-    if (state && typeof state === 'object') stateUpdates = deepClone(state)
-  }
-  const template = Object.keys(clone || {}).length ? clone : undefined
-  return { template, formUpdates, stateUpdates }
 }
 
 function deepClone<T>(value: T): T {
@@ -277,6 +279,25 @@ function deepClone<T>(value: T): T {
     return out as T
   }
   return value
+}
+
+function isPlainObject(value: unknown): value is Record<string, any> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function extractPlainObject(source: Record<string, any>, key: string): Record<string, any> | undefined {
+  if (!Object.prototype.hasOwnProperty.call(source, key)) return undefined
+  const value = source[key]
+  delete source[key]
+  if (!isPlainObject(value)) {
+    if (value !== undefined) console.warn(`[actions] Expected "${key}" to be an object`)
+    return undefined
+  }
+  return deepClone(value)
+}
+
+function isValidActionKey(value: string): boolean {
+  return /^[A-Za-z0-9_-]+$/.test(value)
 }
 
 function interpolateActionValue(value: any, scope: ActionScope): any {
@@ -389,34 +410,6 @@ function setUserPubkey(store: ReturnType<typeof getDefaultStore>, pubkey: string
   const prev = store.get(userAtom) || { pubkey: null }
   if (prev.pubkey === pubkey) return
   store.set(userAtom, { ...prev, pubkey })
-}
-
-function normalizeNaddrPayload(payload: any): string | null {
-  if (!payload) return null
-  const extract = (value: unknown): string | null => {
-    if (typeof value !== 'string') return null
-    let out = value.trim()
-    if (!out) return null
-    if (out.startsWith('nostr:')) out = out.slice('nostr:'.length)
-    return out
-  }
-  const normalize = (value: string | null): string | null => {
-    if (!value) return null
-    const lower = value.toLowerCase()
-    if (!/^naddr1[0-9a-z]+$/.test(lower)) {
-      console.warn('[install_app] invalid naddr payload', value)
-      return null
-    }
-    return lower
-  }
-  if (typeof payload === 'string') return normalize(extract(payload))
-  if (typeof payload === 'object') {
-    const fromNaddr = normalize(extract((payload as any).naddr))
-    if (fromNaddr) return fromNaddr
-    const fromValue = normalize(extract((payload as any).value))
-    if (fromValue) return fromValue
-  }
-  return null
 }
 
 function applyActionPipe(event: any, pipeSpec: any[]) {

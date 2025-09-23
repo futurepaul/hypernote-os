@@ -60,7 +60,7 @@ PAUL: yes please get rid of `hstack start` and `each start`! they should always 
 PAUL: I like the suggestion of compiling everything in mustache into pipes so we can use all the same ops and syntax. and I like the idea of compiling `||` into coalesce!
 
 ### 2.5 Actions vs Queries
-- Actions live under `actions:` map, but buttons in markdown fences reference `action: @install_app`. That leading `@` is only required in UI but not in frontmatter map keys (vision doc uses `@post_note`). Consistency would help.
+- Actions live under the `actions:` map, and buttons should invoke them via `action: actions.post_note`. System wires use `system.install_app`. Avoid legacy `@action` shorthands.
 - Actions support nested `pipe` just like queries? No—they run interpolation only. If we add moustache piping, actions inherit automatically.
 
 PAUL: since we're getting rid of the prefix in the frontmatter let's get rid of it in the markup as well! (`post_note`) ... we could reserve `@` prefix for global actions that rely on os-level functionality that's not defined in the note.

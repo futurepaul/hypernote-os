@@ -58,7 +58,7 @@ Published _{{ app[0].created_at | format_date }}_
 
 ```button
 text: Install
-action: "@install_app"
+action: system.install_app
 payload:
   naddr: "{{ app[0].naddr }}"
 ```

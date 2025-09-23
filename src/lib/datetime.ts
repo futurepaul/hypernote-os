@@ -11,10 +11,10 @@ type FormatDateOptions = {
   options?: Intl.DateTimeFormatOptions
 }
 
-export function formatDateHelper(value: unknown, arg?: FormatDatePreset | FormatDateOptions | string | number | boolean): string {
+export function formatDateHelper(value: unknown, arg?: FormatDatePreset | FormatDateOptions | string): string {
   const date = coerceToDate(value)
   if (!date) return ''
-  const config = normalizeConfig(arg)
+  const config = parseFormatDateArg(arg)
   if (config.preset === 'iso') return date.toISOString()
   const options = buildIntlOptions(config)
   try {
@@ -26,18 +26,21 @@ export function formatDateHelper(value: unknown, arg?: FormatDatePreset | Format
   }
 }
 
-function normalizeConfig(arg?: FormatDatePreset | FormatDateOptions | string | number | boolean): { preset?: FormatDatePreset; locale?: string; options?: Intl.DateTimeFormatOptions } {
+function parseFormatDateArg(arg: unknown): { preset?: FormatDatePreset; locale?: string; options?: Intl.DateTimeFormatOptions } {
   if (arg == null) return {}
   if (typeof arg === 'string') {
     const trimmed = arg.trim()
-    if (trimmed === 'iso' || trimmed === 'date' || trimmed === 'time' || trimmed === 'datetime') {
-      return { preset: trimmed }
-    }
-    if (trimmed.length === 0) return {}
+    if (!trimmed) return {}
+    if (isPreset(trimmed)) return { preset: trimmed }
     return { locale: trimmed }
   }
-  if (typeof arg === 'number' || typeof arg === 'boolean') return { locale: String(arg) }
-  if (typeof arg === 'object') return { preset: arg.preset, locale: arg.locale, options: arg.options }
+  if (typeof arg === 'object' && !Array.isArray(arg)) {
+    const input = arg as Record<string, unknown>
+    const preset = typeof input.preset === 'string' && isPreset(input.preset) ? input.preset : undefined
+    const locale = typeof input.locale === 'string' && input.locale.trim() ? input.locale.trim() : undefined
+    const options = typeof input.options === 'object' && input.options != null ? input.options as Intl.DateTimeFormatOptions : undefined
+    return { ...(preset ? { preset } : {}), ...(locale ? { locale } : {}), ...(options ? { options } : {}) }
+  }
   return {}
 }
 
@@ -53,6 +56,10 @@ function buildIntlOptions(config: { preset?: FormatDatePreset; options?: Intl.Da
     default:
       return DEFAULT_OPTIONS
   }
+}
+
+function isPreset(value: string): value is FormatDatePreset {
+  return value === 'iso' || value === 'date' || value === 'time' || value === 'datetime'
 }
 
 function coerceToDate(value: unknown): Date | null {

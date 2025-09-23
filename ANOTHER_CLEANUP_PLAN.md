@@ -57,6 +57,7 @@ Progress summary
 - ✅ System registry now owns pubkey parsing, profile loading, and installer side effects; UI nodes simply dispatch actions.
 - ✅ Mustache interpolation stays on the reference resolver path (no `$` helpers), and new unit coverage (`runtime.test.ts`) exercises the observable/action bridge.
 - ✅ `bun test` passes, including publish/install roundtrip with the refactored installer path.
+- ✅ Action pointers now use explicit `system.*` / `actions.*` syntax; runtime no longer normalizes names and doc actions are validated at compile time.
 
 Tasks
 1. Define two registries:
@@ -125,6 +126,7 @@ Validation
 - Compiler currently rewrites `each` fences from `{ from }` to `{ source }`; once docs are migrated, enforce a single key and drop the rewrite.
 - Dot-notation fences (`hstack.start`, `each.start`) are now required; no runtime normalization remains.
 - Action names still flow through `normalizeActionName`; explore validating frontmatter keys instead of renaming at runtime.
+- Action names no longer normalize automatically; we now rely on explicit `system.*` / `actions.*` prefixes. Future work: add schema validation so erroneous keys fail compilation immediately.
 
 ---
 

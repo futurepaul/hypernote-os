@@ -10,12 +10,10 @@ hypernote:
 
 ```button
 text: Send
-action: @send
 ```
 
 ```button
 text: Receive
-action: @receive
 ```
 
 ```hstack.end
