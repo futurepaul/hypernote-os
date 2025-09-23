@@ -65,3 +65,11 @@ test("trim pipe removes whitespace", () => {
   });
   expect(out).toBe("[hello]");
 });
+
+test("backslash escapes moustache", () => {
+  const out = interpolate("Show literal: \\{{ braces }}", {
+    globals: {},
+    queries: {},
+  });
+  expect(out).toBe("Show literal: {{ braces }}");
+});

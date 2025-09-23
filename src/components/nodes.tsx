@@ -100,6 +100,16 @@ function InputNode({ text, globals, windowId, name, queries }: { text: string; g
 }
 
 function MarkdownEditorNode({ data, windowId }: { data?: any; windowId: string }) {
+  const readOnly = Boolean(data?.readOnly || data?.readonly);
+  if (readOnly) {
+    const staticValue = typeof data?.value === 'string' ? data.value : '';
+    return (
+      <pre className="bg-white/10 text-sm text-gray-900 rounded border border-gray-300 overflow-x-auto px-3 py-2">
+        <code className="font-mono whitespace-pre-wrap leading-relaxed">{staticValue}</code>
+      </pre>
+    );
+  }
+
   const [formValues, setFormValues] = useAtom(formsAtom(windowId));
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<any>(null);

@@ -20,15 +20,26 @@ function renderBlockNode(node: any, scope: MarkdownScope, key: string): ReactNod
     case "root":
       return <Fragment key={key}>{renderBlockNodes(node.children || [], scope, key)}</Fragment>;
     case "paragraph":
-      return <p key={key}>{renderInlineChildren(node.children || [], scope, `${key}-p`)}</p>;
+      return <p key={key} className="leading-relaxed text-sm text-gray-900">{renderInlineChildren(node.children || [], scope, `${key}-p`)}</p>;
     case "heading": {
       const depth = Math.min(6, Math.max(1, Number(node.depth) || 1));
       const Tag = `h${depth}` as keyof JSX.IntrinsicElements;
-      return <Tag key={key}>{renderInlineChildren(node.children || [], scope, `${key}-h`)}</Tag>;
+      const classes: Record<number, string> = {
+        1: "text-xl font-semibold text-gray-900 mt-4 mb-2",
+        2: "text-lg font-semibold text-gray-900 mt-4 mb-2",
+        3: "text-base font-semibold text-gray-900 mt-3 mb-1.5",
+        4: "text-base font-medium text-gray-900 mt-2.5 mb-1",
+        5: "text-sm font-medium text-gray-900 mt-2 mb-1",
+        6: "text-sm font-medium text-gray-900 mt-2 mb-1",
+      };
+      return <Tag key={key} className={classes[depth] || classes[4]}>{renderInlineChildren(node.children || [], scope, `${key}-h`)}</Tag>;
     }
     case "list": {
       const Tag = (node.ordered ? "ol" : "ul") as keyof JSX.IntrinsicElements;
-      return <Tag key={key}>{renderBlockNodes(node.children || [], scope, `${key}-li`)}</Tag>;
+      const listClass = node.ordered
+        ? "list-decimal pl-5 space-y-1 text-sm text-gray-900"
+        : "list-disc pl-5 space-y-1 text-sm text-gray-900";
+      return <Tag key={key} className={listClass}>{renderBlockNodes(node.children || [], scope, `${key}-li`)}</Tag>;
     }
     case "listItem":
       return <li key={key}>{renderBlockNodes(node.children || [], scope, `${key}-c`)}</li>;
@@ -38,8 +49,11 @@ function renderBlockNode(node: any, scope: MarkdownScope, key: string): ReactNod
       return <hr key={key} />;
     case "code":
       return (
-        <pre key={key}>
-          <code>{interpolateScalar(node.value, scope)}</code>
+        <pre
+          key={key}
+          className="bg-white/10 text-sm text-gray-900 rounded border border-gray-300 overflow-x-auto p-3"
+        >
+          <code className="font-mono">{interpolateScalar(node.value, scope)}</code>
         </pre>
       );
     default:
@@ -77,7 +91,14 @@ function renderInlineNode(node: any, scope: MarkdownScope, key: string): ReactNo
     case "emphasis":
       return <em key={key}>{renderInlineChildren(node.children || [], scope, `${key}-e`)}</em>;
     case "inlineCode":
-      return <code key={key}>{interpolateScalar(node.value, scope)}</code>;
+      return (
+        <code
+          key={key}
+          className="font-mono text-[13px] px-1.5 py-0.5 bg-white/10 border border-gray-300 rounded text-gray-900"
+        >
+          {interpolateScalar(node.value, scope)}
+        </code>
+      );
     case "break":
       return <br key={key} />;
     case "link": {

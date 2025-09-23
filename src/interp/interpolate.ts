@@ -3,7 +3,13 @@ import { formatDateHelper } from '../lib/datetime'
 
 export function interpolate(text: string, scope: { globals: any; queries: Record<string, any> }) {
   if (!text) return ''
-  return text.replace(/{{\s*(.+?)\s*}}/g, (_m, expr: string) => {
+  const ESC_OPEN = '\uE000'
+  const ESC_CLOSE = '\uE001'
+  const normalized = text
+    .replace(/\\{{/g, ESC_OPEN)
+    .replace(/\\}}/g, ESC_CLOSE)
+
+  const interpolated = normalized.replace(/{{\s*(.+?)\s*}}/g, (_m, expr: string) => {
     const options = expr.split('||').map(part => part.trim()).filter(Boolean)
     for (const option of options.length ? options : ['']) {
       const value = resolveExpression(option, scope)
@@ -11,6 +17,10 @@ export function interpolate(text: string, scope: { globals: any; queries: Record
     }
     return ''
   })
+
+  return interpolated
+    .replace(new RegExp(ESC_OPEN, 'g'), '{{')
+    .replace(new RegExp(ESC_CLOSE, 'g'), '}}')
 }
 
 function resolveExpression(option: string, scope: { globals: any; queries: Record<string, any> }): unknown {

@@ -49,42 +49,46 @@ actions:
 
 ## UI Blocks
 
-~~~markdown
-```hstack.start
-width: 320px
-```
-![avatar](https://placekitten.com/64/64)
+```markdown_editor
+readOnly: true
+value: |
+  ```hstack.start
+  width: 320px
+  ```
+  ![avatar](https://placekitten.com/64/64)
 
-```vstack.start
-```
-**{{ user.profile?.name || 'Anonymous' }}**
-_{{ user.profile?.about || 'No bio yet.' }}_
+  ```vstack.start
+  ```
+  **{{ user.profile?.name || 'Anonymous' }}**
+  _{{ user.profile?.about || 'No bio yet.' }}_
 
-```button
-text: Install example app
-action: system.install_app
-payload:
-  naddr: "naddr1...."
-```
+  ```button
+  text: Install example app
+  action: system.install_app
+  payload:
+    naddr: "naddr1...."
+  ```
 
-```vstack.end
+  ```vstack.end
+  ```
+  ```hstack.end
+  ```
 ```
-```hstack.end
-```
-~~~
 
 - `hstack.start` / `vstack.start` create flex containers.
 - `each.start` iterates over data sources:
 
-~~~markdown
-```each.start
-from: queries.feed
-as: item
+```markdown_editor
+readOnly: true
+value: |
+  ```each.start
+  from: queries.feed
+  as: item
+  ```
+  - {{ item.content }}
+  ```each.end
+  ```
 ```
-- {{ item.content }}
-```each.end
-```
-~~~
 
 ## Actions and System Hooks
 
@@ -92,20 +96,22 @@ as: item
 - OS-level hooks live under `system.*` (e.g. `system.install_app`, `system.set_pubkey`).
 - Buttons bind to actions:
 
-~~~markdown
-```button
-text: Post Note
-action: actions.post
-payload:
-  published_at: {{ time.now }}
+```markdown_editor
+readOnly: true
+value: |
+  ```button
+  text: Post Note
+  action: actions.post
+  payload:
+    published_at: {{ time.now }}
+  ```
 ```
-~~~
 
 ## Tips
 
-- Use `{{ time.now | format_date }}` for user-friendly timestamps.
+- Use `\{{ time.now | format_date }}` for user-friendly timestamps.
 - Enrich data by piping queries (see App Store sample for `enrich` usage).
-- Reference local form/state values with `{{ form.field }}` or `{{ state.key }}`.
+- Reference local form/state values with `\{{ form.field }}` or `\{{ state.key }}`.
 - Test round-trip serialization with `bun test` to ensure your app publishes cleanly.
 
 Explore the other sample apps for working examples, then make it your own!
