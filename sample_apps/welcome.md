@@ -6,6 +6,28 @@ forms:
   note: ""
 state:
   profile_target: user.pubkey
+  frontmatter_block: |
+    ```yaml
+    ---
+    hypernote:
+      name: My App
+      icon: folder.png
+    forms:
+      note: ""
+    state:
+      profile_target: user.pubkey
+    queries:
+      feed:
+        kinds: [1]
+        authors: [user.pubkey]
+    actions:
+      post:
+        kind: 1
+        content: "\{{ form.note }}"
+        forms:
+          note: ""
+    ---
+    ```
   docs:
     ui_block: |
       ```hstack.start
@@ -58,37 +80,16 @@ Hypernote apps are written in Markdown with YAML frontmatter. The compiler turns
 
 ## Frontmatter Template
 
-```yaml
----
-hypernote:
-  name: My App
-  icon: folder.png
-forms:
-  note: ""
-state:
-  profile_target: user.pubkey
-queries:
-  feed:
-    kinds: [1]
-    authors: [user.pubkey]
-actions:
-  post:
-    kind: 1
-    content: "{{ form.note }}"
-    forms:
-      note: ""
----
+```markdown.viewer
+value: {{ state.frontmatter_block }}
+height: 260
 ```
-
-- `forms` store input values scoped to the app window.
-- `state` holds arbitrary per-window values (e.g. the profile currently viewed).
-- `queries` map to Hypersauce subscriptions. Pipe operations (`pipe: [...]`) can transform results.
-- `actions` describe publish templates. They can update `forms` / `state` and can be triggered by buttons or other UI nodes.
 
 ## UI Blocks
 
 ```markdown.viewer
 value: {{ state.docs.ui_block }}
+height: 220
 ```
 
 - `hstack.start` / `vstack.start` create flex containers.
@@ -96,6 +97,7 @@ value: {{ state.docs.ui_block }}
 
 ```markdown.viewer
 value: {{ state.docs.each_block }}
+height: 200
 ```
 
 ## Actions and System Hooks
@@ -106,6 +108,7 @@ value: {{ state.docs.each_block }}
 
 ```markdown.viewer
 value: {{ state.docs.button_block }}
+height: 180
 ```
 
 ## Tips

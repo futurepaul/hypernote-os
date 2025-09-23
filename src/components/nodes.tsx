@@ -171,7 +171,7 @@ function MarkdownEditorNode({ data, windowId }: { data?: any; windowId: string }
       )}
       <div
         ref={containerRef}
-        className="min-h-[140px] max-h-[360px] overflow-y-auto px-3 py-2 text-sm text-gray-900"
+        className="min-h-[120px] max-h-[320px] overflow-y-auto px-2.5 py-2 text-sm text-gray-900"
       />
     </div>
   );
@@ -209,13 +209,11 @@ function MarkdownViewerNode({ data, globals, queries }: { data?: any; globals: a
   }, [value]);
 
   return (
-    <div className="relative">
-      <div
-        ref={containerRef}
-        className="px-3 py-2 text-sm text-gray-900 overflow-y-auto"
-        style={{ minHeight: height, maxHeight: Math.max(height, 360) }}
-      />
-    </div>
+    <div
+      ref={containerRef}
+      className="px-3 py-2 text-sm text-gray-900 overflow-y-auto bg-white/10 border border-gray-300 rounded"
+      style={{ minHeight: height, maxHeight: Math.max(height, 360) }}
+    />
   );
 }
 
