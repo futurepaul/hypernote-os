@@ -20,6 +20,7 @@ const BaseNodeSchema = z.object({
     z.literal("each"),
     z.literal("markdown_editor"),
     z.literal("literal_code"),
+    z.literal("markdown_viewer"),
   ]),
   deps: NodeDepsSchema,
 });
@@ -39,6 +40,11 @@ const ActionableNodeSchema = BaseNodeSchema.extend({
 const LiteralCodeNodeSchema = BaseNodeSchema.extend({
   type: z.literal("literal_code"),
   text: z.string().optional(),
+  data: unknownRecord.optional(),
+});
+
+const MarkdownViewerNodeSchema = BaseNodeSchema.extend({
+  type: z.literal("markdown_viewer"),
   data: unknownRecord.optional(),
 });
 
@@ -65,6 +71,7 @@ export const UiNodeSchema = z.union([
   StackNodeSchema,
   EachNodeSchema,
   LiteralCodeNodeSchema,
+  MarkdownViewerNodeSchema,
 ]);
 
 export type UiNode = z.infer<typeof UiNodeSchema>;

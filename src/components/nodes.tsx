@@ -99,10 +99,9 @@ function InputNode({ text, globals, windowId, name, queries }: { text: string; g
   );
 }
 
-function MarkdownEditorNode({ data, windowId, globals, queries }: { data?: any; windowId: string; globals: any; queries: Record<string, any> }) {
+function MarkdownEditorNode({ data, windowId }: { data?: any; windowId: string }) {
   const readOnly = Boolean(data?.readOnly || data?.readonly);
-  const defaultValueRaw = typeof data?.value === 'string' ? data.value : '';
-  const defaultValue = interpolateText(defaultValueRaw, globals, queries);
+  const initialValue = typeof data?.value === 'string' ? data.value : '';
 
   const [formValues, setFormValues] = useAtom(formsAtom(windowId));
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -117,15 +116,7 @@ function MarkdownEditorNode({ data, windowId, globals, queries }: { data?: any; 
   const placeholder = typeof data?.placeholder === 'string' ? data.placeholder : '';
 
   const liveValue = typeof formValues?.[fieldName] === 'string' ? formValues[fieldName] : '';
-  const editorValue = readOnly ? defaultValue : (liveValue || defaultValue);
-
-  useEffect(() => {
-    if (readOnly) return;
-    if (!liveValue && defaultValue) {
-      setFormValues(prev => ({ ...(prev || {}), [fieldName]: defaultValue }));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const editorValue = readOnly ? initialValue : liveValue;
 
   const handleChange = useCallback((val: string) => {
     if (readOnly) return;
@@ -137,7 +128,6 @@ function MarkdownEditorNode({ data, windowId, globals, queries }: { data?: any; 
     const [instance] = OverType.init(containerRef.current, {
       value: editorValue,
       toolbar: false,
-      readOnly,
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
       fontSize: '14px',
       lineHeight: 1.5,
@@ -179,6 +169,46 @@ function MarkdownEditorNode({ data, windowId, globals, queries }: { data?: any; 
           {placeholder}
         </div>
       )}
+      <div
+        ref={containerRef}
+        className="min-h-[140px] max-h-[360px] overflow-y-auto px-3 py-2 text-sm text-gray-900"
+      />
+    </div>
+  );
+}
+
+function MarkdownViewerNode({ data, globals, queries }: { data?: any; globals: any; queries: Record<string, any> }) {
+  const raw = typeof data?.value === 'string' ? data.value : '';
+  const value = useMemo(() => interpolateText(raw, globals, queries), [raw, globals, queries]);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const editorRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const [instance] = OverType.init(containerRef.current, {
+      value,
+      readOnly: true,
+      toolbar: false,
+      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+      fontSize: '14px',
+      lineHeight: 1.5,
+    } as any);
+    editorRef.current = instance;
+
+    const editable = containerRef.current.querySelector('[contenteditable="true"]') as HTMLElement | null;
+    if (editable) {
+      editable.setAttribute('contenteditable', 'false');
+      editable.classList.add('pointer-events-none', 'select-text');
+    }
+
+    return () => {
+      try { editorRef.current?.destroy?.(); } catch {}
+      editorRef.current = null;
+    };
+  }, [value]);
+
+  return (
+    <div className="relative border border-gray-300 rounded bg-white/10">
       <div
         ref={containerRef}
         className="min-h-[140px] max-h-[360px] overflow-y-auto px-3 py-2 text-sm text-gray-900"
@@ -294,6 +324,14 @@ export function RenderNodes({ nodes, globals, windowId, queries, statuses, inlin
           key={n.id || key}
           data={n.data}
           windowId={windowId}
+        />
+      );
+    }
+    if (n.type === "markdown_viewer") {
+      return (
+        <MarkdownViewerNode
+          key={n.id || key}
+          data={n.data}
           globals={globals}
           queries={queries}
         />

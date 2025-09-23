@@ -177,6 +177,18 @@ describe("compiler", () => {
     expect(rtLiteral?.data?.lang).toBe('js');
   });
 
+  test("markdown viewer blocks compile to viewer nodes", () => {
+    const md = `---\nname: Viewer\n---\n\n\`\`\`markdown.viewer\nvalue: {{ state.docs.snippet }}\n\`\`\`\n`;
+    const compiled = compileMarkdownDoc(md);
+    const viewer = compiled.ast.find(n => (n as any).type === 'markdown_viewer') as any;
+    expect(viewer).toBeTruthy();
+    expect(viewer.data?.value).toBe('{{ state.docs.snippet }}');
+
+    const roundtrip = compileMarkdownDoc(decompile(compiled));
+    const rtViewer = roundtrip.ast.find(n => (n as any).type === 'markdown_viewer') as any;
+    expect(rtViewer?.data?.value).toBe('{{ state.docs.snippet }}');
+  });
+
 
   test("button payload retains moustache templates", () => {
     const md = `---\nname: Button\n---\n\n\`\`\`button\ntext: Install\naction: "@install_app"\npayload:\n  naddr: "{{ $app.0.naddr }}"\n\`\`\`\n`;

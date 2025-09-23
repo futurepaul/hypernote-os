@@ -87,16 +87,14 @@ actions:
 
 ## UI Blocks
 
-```markdown_editor
-readOnly: true
+```markdown.viewer
 value: {{ state.docs.ui_block }}
 ```
 
 - `hstack.start` / `vstack.start` create flex containers.
 - `each.start` iterates over data sources:
 
-```markdown_editor
-readOnly: true
+```markdown.viewer
 value: {{ state.docs.each_block }}
 ```
 
@@ -106,8 +104,7 @@ value: {{ state.docs.each_block }}
 - OS-level hooks live under `system.*` (e.g. `system.install_app`, `system.set_pubkey`).
 - Buttons bind to actions:
 
-```markdown_editor
-readOnly: true
+```markdown.viewer
 value: {{ state.docs.button_block }}
 ```
 

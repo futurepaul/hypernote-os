@@ -51,6 +51,10 @@ function encodeNode(n: UiNode): string {
     const lang = n.type === 'markdown_editor' ? 'markdown-editor' : n.type
     return `\n\`\`\`${lang}\n${y}\n\`\`\`\n`
   }
+  if ((n as any).type === 'markdown_viewer') {
+    const y = YAML.stringify((n as any).data || {}).trimEnd()
+    return `\n\`\`\`markdown.viewer\n${y}\n\`\`\`\n`
+  }
   if ((n as any).type === 'literal_code') {
     const lang = typeof (n as any).data?.lang === 'string' ? (n as any).data.lang : ''
     const fence = lang ? `\n\`\`\`${lang}\n` : `\n\`\`\`\n`

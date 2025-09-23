@@ -196,6 +196,17 @@ const flush = () => {
         pushNode(node);
         continue;
       }
+      if (info === "markdown.viewer" || info === "markdown_viewer" || info === "markdown-viewer") {
+        flush();
+        const rawBlock = (t.value || "").trim();
+        const parsed = safeParseYamlBlock(rawBlock);
+        const data = restoreTemplateData(parsed, templates.map);
+        const deps = deriveDepsFromData(data);
+        const node: UiNode = { id: genId(), type: "markdown_viewer", data };
+        if (deps) node.deps = deps;
+        pushNode(node);
+        continue;
+      }
       if (info === "hstack.start") {
         flush();
         const raw = (t.value || "").trim();
