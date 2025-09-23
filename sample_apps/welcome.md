@@ -7,7 +7,6 @@ forms:
 state:
   profile_target: user.pubkey
   frontmatter_block: |
-    ```yaml
     ---
     hypernote:
       name: My App
@@ -23,11 +22,10 @@ state:
     actions:
       post:
         kind: 1
-        content: "\{{ form.note }}"
+        content: {{ form.note }}
         forms:
           note: ""
     ---
-    ```
   docs:
     ui_block: |
       ```hstack.start
@@ -37,8 +35,8 @@ state:
 
       ```vstack.start
       ```
-      **\{{ user.profile?.name || 'Anonymous' }}**
-      _\{{ user.profile?.about || 'No bio yet.' }}_
+      **{{ user.profile?.name || 'Anonymous' }}**
+      _{{ user.profile?.about || 'No bio yet.' }}_
 
       ```button
       text: Install example app
@@ -56,7 +54,7 @@ state:
       from: queries.feed
       as: item
       ```
-      - \{{ item.content }}
+      - {{ item.content }}
       ```each.end
       ```
     button_block: |
@@ -64,14 +62,18 @@ state:
       text: Post Note
       action: actions.post
       payload:
-        published_at: \{{ time.now }}
+        published_at: {{ time.now }}
       ```
 ---
 # Welcome to Hypernote OS
 
-Hypernote apps are written in Markdown with YAML frontmatter. The compiler turns this document into a structured AST, Hypersauce streams queries, and the renderer draws the UI inside draggable windows.
+Hypernote OS is a OS-in-the-browser for doing nostr stuff and having a good time. Hypernote apps are simple to write and can be published to nostr. Make your own apps and share them with your friends!
 
-## Quick Start
+## How it works
+
+Hypernote apps are written in Markdown with YAML frontmatter. They get compiled to a structured AST. This AST can then be published to nostr as a `{ version, meta, ast }` JSON object (kind 32616). When you run an app the AST is parsed into queries, actions, and UI nodes. The queries are resolved using Hypersauce and the UI nodes are rendered using React.
+
+## Quick Start for Building Apps
 
 1. Edit documents under **Apps → Editor**.
 2. Frontmatter describes metadata, `queries`, `actions`, optional `forms` and `state`.
@@ -81,22 +83,22 @@ Hypernote apps are written in Markdown with YAML frontmatter. The compiler turns
 ## Frontmatter Template
 
 ```markdown.viewer
-value: {{ state.frontmatter_block }}
-height: 260
+value: {{ state.frontmatter_block | trim }}
+height: 460
 ```
 
 ## UI Blocks
 
 ```markdown.viewer
-value: {{ state.docs.ui_block }}
-height: 220
+value: {{ state.docs.ui_block | trim }}
+height: 500
 ```
 
 - `hstack.start` / `vstack.start` create flex containers.
 - `each.start` iterates over data sources:
 
 ```markdown.viewer
-value: {{ state.docs.each_block }}
+value: {{ state.docs.each_block | trim }}
 height: 200
 ```
 
@@ -107,7 +109,7 @@ height: 200
 - Buttons bind to actions:
 
 ```markdown.viewer
-value: {{ state.docs.button_block }}
+value: {{ state.docs.button_block | trim }}
 height: 180
 ```
 

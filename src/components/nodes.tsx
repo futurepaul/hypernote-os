@@ -224,7 +224,7 @@ function MarkdownViewerNode({ data, globals, queries }: { data?: any; globals: a
     <div className="h-full" style={{ height }}>
       <div
         ref={containerRef}
-        className="h-full overflow-y-auto px-3 py-2 text-sm text-gray-900 bg-white/10 border border-gray-300 rounded"
+        className="h-full bg-white/10 border border-gray-300 rounded"
       />
     </div>
   );
