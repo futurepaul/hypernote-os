@@ -52,6 +52,12 @@ Remaining tasks
 ## Workstream 4 — Actions Architecture
 **Goal:** Clearly separate OS/system actions from app-defined actions while keeping invocation ergonomics consistent.
 
+Progress summary
+- ✅ `useSystemAction`/`useDocAction` split keeps OS hooks and document hooks isolated while `useAction` routes between them.
+- ✅ System registry now owns pubkey parsing, profile loading, and installer side effects; UI nodes simply dispatch actions.
+- ✅ Mustache interpolation stays on the reference resolver path (no `$` helpers), and new unit coverage (`runtime.test.ts`) exercises the observable/action bridge.
+- ✅ `bun test` passes, including publish/install roundtrip with the refactored installer path.
+
 Tasks
 1. Define two registries:
    - `systemActions`: maintained by Hypernote (e.g., `install_app`, `set_pubkey`, window management).
@@ -63,8 +69,9 @@ Tasks
 5. Tag any temporary compatibility shims with `// TODO DEPRECATED` and log when invoked.
 
 Validation
-- Unit/integration tests covering: app-defined publish action, installer action, and pubkey setter.
-- Confirm profile/app-store/clock apps still work using only the new registries.
+- Unit coverage: `src/queries/runtime.test.ts` (action/observable wiring).
+- `bun test` (includes publish/install roundtrip) on Hypernote OS.
+- Manual smoke: system actions invoked via Apps/Profile/App Store after refactor.
 
 ## Workstream 5 — Renderer Purity & Dependency Metadata
 **Goal:** Make the renderer a pure projection of `{ nodes, globals, queries }` without hidden side effects or regex heuristics.

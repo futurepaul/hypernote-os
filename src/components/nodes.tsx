@@ -1,11 +1,10 @@
 import { useMemo, useEffect, useState, useRef, useCallback, Fragment, type ReactNode, type CSSProperties } from "react";
 import OverType from "overtype";
-import { nip19, getPublicKey } from "nostr-tools";
 import { useAtom, useAtomValue } from "jotai";
 import type { UiNode } from "../compiler";
 import { formsAtom } from "../state/formsAtoms";
 import { interpolate as interp } from "../interp/interpolate";
-import { useAction, normalizeActionName } from "../state/actions";
+import { useAction } from "../state/actions";
 import { renderMarkdownAst, type MarkdownScope } from "./MarkdownRenderer";
 import { sanitizeStackConfig } from "../lib/layout";
 import { resolveReference, referenceQueryId } from "../interp/reference";
@@ -101,57 +100,18 @@ function ButtonNode({ text, globals, action, windowId, queries, payloadSpec }: {
   const label = (interpolateText(String(text ?? ""), globals, queries).trim() || "Button");
   const payload = useMemo(() => buildPayload(payloadSpec, globals, queries), [payloadSpec, globals, queries]);
   const run = useAction(action, windowId);
-  const setPub = useAction('@set_pubkey', windowId);
   return (
     <button
       className="bg-gray-200 hover:bg-gray-300 text-gray-900 border border-gray-500 rounded px-3 py-1 text-sm"
       onClick={() => {
-        if (action) {
-          console.log("ButtonNode: running action", action, "user.pubkey=", globals?.user?.pubkey);
-          const ensurePubFromForm = async () => {
-            const act = normalizeActionName(action);
-            if (act === 'load_profile' && !globals?.user?.pubkey) {
-              const v: string | undefined = globals?.form?.pubkey;
-              const trimmed = (v || '').trim();
-              if (!trimmed) return;
-              if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
-                await setPub(trimmed.toLowerCase());
-                return;
-              }
-              if (/nsec1/i.test(trimmed)) {
-                try {
-                  const d = nip19.decode(trimmed);
-                  if (d.type === 'nsec') {
-                    const sk = d.data as Uint8Array | string;
-                    const skHex = typeof sk === 'string' ? sk : Array.from(sk).map(b => b.toString(16).padStart(2, '0')).join('');
-                    const pk = getPublicKey(skHex as any);
-                    await setPub(pk);
-                    return;
-                  }
-                } catch {}
-              }
-              if (/npub1/i.test(trimmed)) {
-                try {
-                  const d = nip19.decode(trimmed);
-                  if (d.type === 'npub') {
-                    const data = d.data as Uint8Array | string;
-                    const hex = typeof data === 'string' ? data : Array.from(data).map(b => b.toString(16).padStart(2, '0')).join('');
-                    await setPub(hex);
-                    return;
-                  }
-                } catch {}
-              }
-            }
-          };
-          ensurePubFromForm().finally(() => {
-            if (process.env.NODE_ENV !== 'production') {
-              console.log('[ButtonNode] payload', payload);
-            }
-            run(payload, { windowId, globals, queries }).catch(e => console.warn('action error', e));
-          });
-        } else {
+        if (!action) {
           console.log("ButtonNode: no action defined");
+          return;
         }
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[ButtonNode] payload', payload);
+        }
+        run(payload, { windowId, globals, queries }).catch(e => console.warn('action error', e));
       }}
     >
       {label}
@@ -162,43 +122,13 @@ function ButtonNode({ text, globals, action, windowId, queries, payloadSpec }: {
 function InputNode({ text, globals, windowId, name, queries }: { text: string; globals: any; windowId: string; name?: string; queries: Record<string, any> }) {
   const [, setForm] = useAtom(formsAtom(windowId));
   const [val, setVal] = useState("");
-  const setPub = useAction('@set_pubkey', windowId);
+  const setPubkey = useAction('@set_pubkey', windowId);
   const ph = interpolateText(text || "", globals, queries);
   const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = e.target.value;
     setVal(v);
     if (name) setForm((prev: any) => ({ ...(prev || {}), [name]: v }));
-    console.log("InputNode:onChange", v);
-    const trimmed = v.trim();
-    if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
-      const hex = trimmed.toLowerCase();
-      setPub(hex);
-      console.log("set user.pubkey from hex", hex);
-      return;
-    }
-    if (/nsec1/i.test(v)) {
-      try {
-        const d = nip19.decode(trimmed);
-        if (d.type === "nsec") {
-          const sk = d.data as Uint8Array | string;
-          const skHex = typeof sk === "string" ? sk : Array.from(sk).map(b => b.toString(16).padStart(2, "0")).join("");
-          const pk = getPublicKey(skHex as any);
-          setPub(pk);
-          console.log("set user.pubkey from nsec", pk);
-        }
-      } catch {}
-    }
-    if (/npub1/i.test(v)) {
-      try {
-        const d = nip19.decode(trimmed);
-        if (d.type === "npub") {
-          const data = d.data as Uint8Array | string;
-          const hex = typeof data === "string" ? data : Array.from(data).map(b => b.toString(16).padStart(2, "0")).join("");
-          setPub(hex);
-          console.log("set user.pubkey from npub", hex);
-        }
-      } catch {}
-    }
+    setPubkey(v, { windowId, globals, queries }).catch(err => console.warn('set_pubkey error', err));
   };
   return (
     <input

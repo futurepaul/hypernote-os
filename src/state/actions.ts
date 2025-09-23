@@ -1,11 +1,11 @@
-import { useMemo } from 'react'
-import { atom, useAtomValue, useSetAtom } from 'jotai'
+import { useMemo, useCallback } from 'react'
+import { atom, useAtomValue } from 'jotai'
 import { atomFamily } from 'jotai/utils'
 import { getDefaultStore } from 'jotai'
 import { relaysAtom, userAtom, docsAtom, openWindowAtom, bringWindowToFrontAtom, editorSelectionAtom } from './appAtoms'
 import { formsAtom } from './formsAtoms'
 import { hypersauceClientAtom } from './hypersauce'
-import { SimplePool, type Event } from 'nostr-tools'
+import { SimplePool, type Event, nip19, getPublicKey } from 'nostr-tools'
 import { interpolate as interpolateTemplate } from '../interp/interpolate'
 import { isDefaultDocId, loadUserDocs, saveUserDocs } from './docs'
 
@@ -28,6 +28,82 @@ export type DocActionDefinition = {
 const emptyDocActionsAtom = atom<Record<string, DocActionDefinition>>({})
 export const docActionsAtom = atomFamily((id: string) => atom<Record<string, DocActionDefinition>>({}))
 
+type SystemActionArgs = {
+  payload: any
+  scope: ActionScope
+  windowId?: string
+  store: ReturnType<typeof getDefaultStore>
+}
+
+type SystemActionHandler = (args: SystemActionArgs) => Promise<any> | void
+
+const systemActionHandlers: Record<string, SystemActionHandler> = {
+  set_pubkey: async ({ payload, scope, store }) => {
+    const pubkey = resolvePubkeyCandidate(payload, scope)
+    if (!pubkey) return
+    setUserPubkey(store, pubkey)
+  },
+  load_profile: async ({ payload, scope, store }) => {
+    const relays = store.get(relaysAtom) || []
+    let pubkey = resolvePubkeyCandidate(payload, scope)
+    if (pubkey) {
+      setUserPubkey(store, pubkey)
+    } else {
+      pubkey = store.get(userAtom)?.pubkey ?? null
+    }
+    if (!pubkey) {
+      console.warn('@load_profile: user.pubkey is not set')
+      return
+    }
+    const pool = new SimplePool()
+    try {
+      console.log('@load_profile: querying kind 0 for', pubkey)
+      const events: Event[] = await pool.querySync(relays, { kinds: [0], authors: [pubkey], limit: 1 })
+      if (events.length) {
+        try {
+          const content = JSON.parse(events[0]!.content)
+          const prev = store.get(userAtom) || { pubkey }
+          store.set(userAtom, { ...prev, pubkey, profile: content })
+          console.log('@load_profile: loaded profile', content?.name || content?.display_name || Object.keys(content || {}).length + ' fields')
+        } catch (e) {
+          console.warn('@load_profile: invalid profile content', e)
+        }
+      } else {
+        console.warn('@load_profile: no profile found on relays')
+      }
+    } finally {
+      pool.close(relays)
+    }
+  },
+  install_app: async ({ payload, store }) => {
+    const relays = store.get(relaysAtom) || []
+    const naddr = normalizeNaddrPayload(payload)
+    if (!naddr) {
+      console.warn('@install_app: missing naddr payload')
+      return
+    }
+    console.log('@install_app: installing', naddr)
+    try {
+      const { installByNaddr } = await import('../services/apps')
+      console.log('@install_app: calling installByNaddr')
+      const result = await installByNaddr(naddr, relays)
+      console.log('@install_app: installed doc', result.id)
+      const prevDocs = store.get(docsAtom)
+      store.set(docsAtom, { ...prevDocs, [result.id]: result.markdown })
+      if (!isDefaultDocId(result.id)) {
+        const userDocs = loadUserDocs()
+        saveUserDocs({ ...userDocs, [result.id]: result.markdown })
+      }
+      store.set(editorSelectionAtom, result.id)
+      store.set(openWindowAtom, result.id)
+      store.set(bringWindowToFrontAtom, result.id)
+    } catch (e) {
+      console.warn('@install_app failed', e)
+      alert('Install failed: ' + (e as any)?.message)
+    }
+  },
+}
+
 export function normalizeActionName(name?: string) {
   if (!name) return undefined as unknown as string
   let n = String(name).trim()
@@ -36,6 +112,8 @@ export function normalizeActionName(name?: string) {
   n = n.replace(/([A-Z])/g, '_$1').toLowerCase()
   // dashes/spaces → underscore; collapse repeats
   n = n.replace(/[\-\s]+/g, '_').replace(/__+/g, '_')
+  if (n.startsWith('actions.')) n = n.slice('actions.'.length)
+  if (n.startsWith('system.')) n = n.slice('system.'.length)
   // alias map
   const aliases: Record<string, string> = {
     setpubkey: 'set_pubkey',
@@ -48,122 +126,86 @@ export function normalizeActionName(name?: string) {
   }
   return aliases[n] || n
 }
+export function useSystemAction(name?: string, windowId?: string) {
+  const normalized = useMemo(() => (name ? normalizeActionName(name) : undefined), [name])
+  const handler = normalized ? systemActionHandlers[normalized] : undefined
+  const store = getDefaultStore()
 
-export function useAction(name?: string, windowId?: string) {
-  const setUser = useSetAtom(userAtom)
-  const relays = useAtomValue(relaysAtom)
-  const user = useAtomValue(userAtom)
-  const setDocs = useSetAtom(docsAtom)
-  const openWindow = useSetAtom(openWindowAtom)
-  const bringToFront = useSetAtom(bringWindowToFrontAtom)
-  const setEditorSelection = useSetAtom(editorSelectionAtom)
-  const client = useAtomValue(hypersauceClientAtom) as any
+  const run = useCallback(async (payload?: any, ctx?: ActionContext) => {
+    if (!handler) {
+      console.warn('Unknown system action', name)
+      return
+    }
+    const scope: ActionScope = {
+      globals: ctx?.globals ?? {},
+      queries: ctx?.queries ?? {},
+    }
+    const targetWindowId = ctx?.windowId ?? windowId
+    return handler({ payload, scope, windowId: targetWindowId, store })
+  }, [handler, name, windowId, store])
+
+  return handler ? run : undefined
+}
+
+export function useDocAction(name?: string, windowId?: string) {
+  const normalized = useMemo(() => (name ? normalizeActionName(name) : undefined), [name])
   const docActionsAtomRef = useMemo(() => (windowId ? docActionsAtom(windowId) : emptyDocActionsAtom), [windowId])
   const docActions = useAtomValue(docActionsAtomRef)
+  const client = useAtomValue(hypersauceClientAtom) as any
+  const docAction = normalized ? docActions[normalized] : undefined
 
-  async function run(payload?: any, ctx?: ActionContext) {
-    if (!name) return
-    const n = normalizeActionName(name)
-    if (n === 'set_pubkey') {
-      const hex = String(payload ?? '')
-      setUser(u => ({ ...u, pubkey: hex }))
+  const run = useCallback(async (payload?: any, ctx?: ActionContext) => {
+    if (!docAction) {
+      console.warn('Unknown doc action', name)
       return
     }
-    if (n === 'load_profile') {
-      const pk = user.pubkey
-      if (!pk) {
-        console.warn('@load_profile: user.pubkey is not set')
-        return
-      }
-      const pool = new SimplePool()
-      try {
-        console.log('@load_profile: querying kind 0 for', pk)
-        const events: Event[] = await pool.querySync(relays || [], { kinds: [0], authors: [pk], limit: 1 })
-        if (events.length) {
-          try {
-            const content = JSON.parse(events[0]!.content)
-            setUser(u => ({ ...u, profile: content }))
-            console.log('@load_profile: loaded profile', content?.name || content?.display_name || Object.keys(content || {}).length + ' fields')
-          } catch (e) {
-            console.warn('@load_profile: invalid profile content', e)
-          }
-        } else {
-          console.warn('@load_profile: no profile found on relays')
-        }
-      } finally {
-        pool.close(relays || [])
-      }
+    if (!client || typeof client.publishEvent !== 'function') {
+      console.warn(`[${normalized}] Hypersauce client not initialized`)
+      alert('Cannot publish: Hypersauce client not ready')
       return
     }
-    if (n === 'install_app') {
-      const naddr = normalizeNaddrPayload(payload)
-      if (!naddr) {
-        console.warn('@install_app: missing naddr payload')
-        return
-      }
-      console.log('@install_app: installing', naddr)
-      try {
-        const { installByNaddr } = await import('../services/apps')
-        console.log('@install_app: calling installByNaddr')
-        const result = await installByNaddr(naddr, relays || [])
-        console.log('@install_app: installed doc', result.id)
-        setDocs(prev => ({ ...prev, [result.id]: result.markdown }))
-        if (!isDefaultDocId(result.id)) {
-          const userDocs = loadUserDocs()
-          saveUserDocs({ ...userDocs, [result.id]: result.markdown })
-        }
-        setEditorSelection(result.id)
-        openWindow(result.id)
-        bringToFront(result.id)
-      } catch (e) {
-        console.warn('@install_app failed', e)
-        alert('Install failed: ' + (e as any)?.message)
-      }
-      return
+    const scope: ActionScope = {
+      globals: ctx?.globals ?? {},
+      queries: ctx?.queries ?? {},
     }
-
-    const docAction = docActions[n]
-    if (docAction) {
-      if (!client || typeof client.publishEvent !== 'function') {
-        console.warn(`[${n}] Hypersauce client not initialized`)
-        alert('Cannot publish: Hypersauce client not ready')
-        return
-      }
-      const scope: ActionScope = {
-        globals: ctx?.globals ?? {},
-        queries: ctx?.queries ?? {},
-      }
-      const templateClone = deepClone(docAction.template)
-      const interpolatedTemplate = interpolateActionValue(templateClone, scope)
-      const pipeSpec = Array.isArray((interpolatedTemplate as any).pipe) ? (interpolatedTemplate as any).pipe : undefined
-      if (pipeSpec) delete (interpolatedTemplate as any).pipe
-      const payloadInterpolated = payload != null ? interpolateActionValue(deepClone(payload), scope) : undefined
-      const finalEvent: Record<string, any> = {
-        ...interpolatedTemplate,
-        ...(payloadInterpolated || {}),
-      }
-      const pipedEvent = pipeSpec && pipeSpec.length ? applyActionPipe(finalEvent, pipeSpec) : finalEvent
-      coerceEventShape(pipedEvent)
-
-      try {
-        const result = await client.publishEvent(pipedEvent)
-        if (ctx?.windowId) {
-          const keys = new Set(docAction.formKeys)
-          if (payloadInterpolated !== undefined) collectFormKeysInto(payloadInterpolated, keys)
-          clearFormFields(ctx.windowId, keys)
-          // TODO: surface publish result (event id) to UI so apps can react to their own posts
-        }
-        return result
-      } catch (e) {
-        console.warn(`[${n}] publish failed`, e)
-        throw e
-      }
+    const templateClone = deepClone(docAction.template)
+    const interpolatedTemplate = interpolateActionValue(templateClone, scope)
+    const pipeSpec = Array.isArray((interpolatedTemplate as any).pipe) ? (interpolatedTemplate as any).pipe : undefined
+    if (pipeSpec) delete (interpolatedTemplate as any).pipe
+    const payloadInterpolated = payload != null ? interpolateActionValue(deepClone(payload), scope) : undefined
+    const finalEvent: Record<string, any> = {
+      ...interpolatedTemplate,
+      ...(payloadInterpolated || {}),
     }
+    const pipedEvent = pipeSpec && pipeSpec.length ? applyActionPipe(finalEvent, pipeSpec) : finalEvent
+    coerceEventShape(pipedEvent)
 
+    const result = await client.publishEvent(pipedEvent)
+    const targetWindowId = ctx?.windowId ?? windowId
+    if (targetWindowId) {
+      const keys = new Set(docAction.formKeys)
+      if (payloadInterpolated !== undefined) collectFormKeysInto(payloadInterpolated, keys)
+      clearFormFields(targetWindowId, keys)
+      // TODO: surface publish result (event id) to UI so apps can react to their own posts
+    }
+    return result
+  }, [docAction, client, name, normalized, windowId])
+
+  return docAction ? run : undefined
+}
+
+export function useAction(name?: string, windowId?: string) {
+  const systemRunner = useSystemAction(name, windowId)
+  const docRunner = useDocAction(name, windowId)
+
+  return useCallback(async (payload?: any, ctx?: ActionContext) => {
+    const mergedCtx: ActionContext | undefined = ctx
+      ? { ...ctx, windowId: ctx.windowId ?? windowId }
+      : (windowId ? { windowId } : undefined)
+    if (systemRunner) return systemRunner(payload, mergedCtx)
+    if (docRunner) return docRunner(payload, mergedCtx)
     console.warn('Unknown action', name)
-  }
-
-  return run
+  }, [systemRunner, docRunner, name, windowId])
 }
 
 export function buildDocActionMap(actions: any): Record<string, DocActionDefinition> {
@@ -308,6 +350,60 @@ function clearFormFields(windowId: string, keys: Set<string>) {
   } catch (e) {
     console.warn('clearFormFields failed', e)
   }
+}
+
+function resolvePubkeyCandidate(payload: any, scope: ActionScope): string | null {
+  const candidates: Array<unknown> = []
+  if (payload != null) {
+    if (typeof payload === 'string') candidates.push(payload)
+    else if (typeof payload === 'object') {
+      const maybePub = (payload as any).pubkey
+      if (typeof maybePub === 'string') candidates.push(maybePub)
+      const maybeValue = (payload as any).value
+      if (typeof maybeValue === 'string') candidates.push(maybeValue)
+    }
+  }
+  const formPubkey = scope?.globals?.form?.pubkey
+  if (typeof formPubkey === 'string') candidates.push(formPubkey)
+  const scopedUserPub = scope?.globals?.user?.pubkey
+  if (typeof scopedUserPub === 'string') candidates.push(scopedUserPub)
+  for (const candidate of candidates) {
+    const resolved = extractPubkey(candidate)
+    if (resolved) return resolved
+  }
+  return null
+}
+
+function extractPubkey(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+  if (/^[0-9a-fA-F]{64}$/.test(trimmed)) return trimmed.toLowerCase()
+  try {
+    const decoded = nip19.decode(trimmed)
+    if (decoded.type === 'npub') {
+      const data = decoded.data as Uint8Array | string
+      const hex = typeof data === 'string' ? data : bytesToHex(data)
+      return hex.toLowerCase()
+    }
+    if (decoded.type === 'nsec') {
+      const data = decoded.data as Uint8Array | string
+      const secret = typeof data === 'string' ? data : bytesToHex(data)
+      const pubkey = getPublicKey(secret)
+      return typeof pubkey === 'string' ? pubkey.toLowerCase() : bytesToHex(pubkey as unknown as Uint8Array).toLowerCase()
+    }
+  } catch {}
+  return null
+}
+
+function bytesToHex(data: Uint8Array): string {
+  return Array.from(data).map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+function setUserPubkey(store: ReturnType<typeof getDefaultStore>, pubkey: string) {
+  const prev = store.get(userAtom) || { pubkey: null }
+  if (prev.pubkey === pubkey) return
+  store.set(userAtom, { ...prev, pubkey })
 }
 
 function normalizeNaddrPayload(payload: any): string | null {
