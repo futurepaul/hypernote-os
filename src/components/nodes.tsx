@@ -102,6 +102,7 @@ function InputNode({ text, globals, windowId, name, queries }: { text: string; g
 function MarkdownEditorNode({ data, windowId }: { data?: any; windowId: string }) {
   const readOnly = Boolean(data?.readOnly || data?.readonly);
   const initialValue = typeof data?.value === 'string' ? data.value : '';
+  const height = typeof data?.height === 'number' && data.height > 0 ? data.height : 180;
 
   const [formValues, setFormValues] = useAtom(formsAtom(windowId));
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -143,6 +144,11 @@ function MarkdownEditorNode({ data, windowId }: { data?: any; windowId: string }
       }
     }
 
+    const root = containerRef.current.querySelector('.overtype-root') as HTMLElement | null;
+    if (root) {
+      root.style.height = '100%';
+    }
+
     return () => {
       try { editorRef.current?.destroy?.(); } catch {}
       editorRef.current = null;
@@ -163,7 +169,7 @@ function MarkdownEditorNode({ data, windowId }: { data?: any; windowId: string }
     : "relative border border-gray-400 rounded bg-white";
 
   return (
-    <div className={wrapperClass}>
+    <div className={wrapperClass} style={{ height }}>
       {showPlaceholder && (
         <div className="pointer-events-none absolute inset-3 text-gray-500 text-sm select-none">
           {placeholder}
@@ -171,7 +177,7 @@ function MarkdownEditorNode({ data, windowId }: { data?: any; windowId: string }
       )}
       <div
         ref={containerRef}
-        className="min-h-[120px] max-h-[320px] overflow-y-auto px-2.5 py-2 text-sm text-gray-900"
+        className="h-full overflow-y-auto px-2.5 py-2 text-sm text-gray-900"
       />
     </div>
   );
@@ -179,7 +185,7 @@ function MarkdownEditorNode({ data, windowId }: { data?: any; windowId: string }
 
 function MarkdownViewerNode({ data, globals, queries }: { data?: any; globals: any; queries: Record<string, any> }) {
   const raw = typeof data?.value === 'string' ? data.value : '';
-  const height = typeof data?.height === 'number' ? data.height : 200;
+  const height = typeof data?.height === 'number' && data.height > 0 ? data.height : 220;
   const value = useMemo(() => interpolateText(raw, globals, queries), [raw, globals, queries]);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<any>(null);
@@ -202,6 +208,12 @@ function MarkdownViewerNode({ data, globals, queries }: { data?: any; globals: a
       editable.classList.add('pointer-events-none', 'select-text');
     }
 
+    const root = containerRef.current.querySelector('.overtype-root') as HTMLElement | null;
+    if (root) {
+      root.style.height = '100%';
+      root.style.background = 'transparent';
+    }
+
     return () => {
       try { editorRef.current?.destroy?.(); } catch {}
       editorRef.current = null;
@@ -209,11 +221,12 @@ function MarkdownViewerNode({ data, globals, queries }: { data?: any; globals: a
   }, [value]);
 
   return (
-    <div
-      ref={containerRef}
-      className="px-3 py-2 text-sm text-gray-900 overflow-y-auto bg-white/10 border border-gray-300 rounded"
-      style={{ minHeight: height, maxHeight: Math.max(height, 360) }}
-    />
+    <div className="h-full" style={{ height }}>
+      <div
+        ref={containerRef}
+        className="h-full overflow-y-auto px-3 py-2 text-sm text-gray-900 bg-white/10 border border-gray-300 rounded"
+      />
+    </div>
   );
 }
 
