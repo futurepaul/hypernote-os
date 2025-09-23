@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useEffect, useMemo, useRef, useState } from "react";
-import OverType from "overtype";
+import { initOvertype } from "../lib/overtypeTheme";
 import { useAtom, useSetAtom, useAtomValue } from 'jotai'
 import { docsAtom, openWindowAtom, bringWindowToFrontAtom, relaysAtom, editorSelectionAtom } from '../state/appAtoms'
 import { parseFrontmatterName } from "../state/docs";
@@ -50,12 +50,8 @@ export function EditorPanel() {
 
   useEffect(() => {
     if (!containerRef.current) return
-    const [instance] = OverType.init(containerRef.current, {
+    const [instance] = initOvertype(containerRef.current, {
       value,
-      toolbar: false,
-      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-      fontSize: '14px',
-      lineHeight: 1.5,
       onChange: (val: string) => setValue(val),
     } as any)
     editorRef.current = instance

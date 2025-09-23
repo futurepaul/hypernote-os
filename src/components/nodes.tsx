@@ -1,5 +1,5 @@
 import { useMemo, useEffect, useState, useRef, useCallback, Fragment, type ReactNode, type CSSProperties } from "react";
-import OverType from "overtype";
+import { initOvertype } from "../lib/overtypeTheme";
 import { useAtom, useAtomValue } from "jotai";
 import type { UiNode } from "../compiler";
 import { formsAtom } from "../state/formsAtoms";
@@ -126,12 +126,8 @@ function MarkdownEditorNode({ data, windowId }: { data?: any; windowId: string }
 
   useEffect(() => {
     if (!containerRef.current) return;
-    const [instance] = OverType.init(containerRef.current, {
+    const [instance] = initOvertype(containerRef.current, {
       value: editorValue,
-      toolbar: false,
-      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-      fontSize: '14px',
-      lineHeight: 1.5,
       onChange: readOnly ? undefined : handleChange,
     } as any);
     editorRef.current = instance;
@@ -165,19 +161,23 @@ function MarkdownEditorNode({ data, windowId }: { data?: any; windowId: string }
 
   const showPlaceholder = !readOnly && placeholder && !liveValue;
   const wrapperClass = readOnly
-    ? "relative"
-    : "relative border border-gray-400 rounded bg-white";
+    ? "relative border border-[var(--bevel-dark)] rounded shadow-inner overflow-hidden"
+    : "relative border border-[var(--bevel-dark)] rounded shadow-[inset_-1px_-1px_0_0_var(--bevel-dark),inset_1px_1px_0_0_var(--bevel-light)] overflow-hidden";
+  const wrapperStyle: CSSProperties = {
+    height,
+    backgroundColor: readOnly ? 'rgba(198, 178, 168, 0.65)' : 'var(--win-bg)',
+  };
 
   return (
-    <div className={wrapperClass} style={{ height }}>
+    <div className={wrapperClass} style={wrapperStyle}>
       {showPlaceholder && (
-        <div className="pointer-events-none absolute inset-3 text-gray-500 text-sm select-none">
+        <div className="pointer-events-none absolute inset-3 text-[rgba(32,23,17,0.45)] text-sm select-none">
           {placeholder}
         </div>
       )}
       <div
         ref={containerRef}
-        className="h-full overflow-y-auto px-2.5 py-2 text-sm text-gray-900"
+        className="h-full overflow-y-auto px-3 py-2 text-sm text-[var(--title-fg)]"
       />
     </div>
   );
@@ -192,13 +192,9 @@ function MarkdownViewerNode({ data, globals, queries }: { data?: any; globals: a
 
   useEffect(() => {
     if (!containerRef.current) return;
-    const [instance] = OverType.init(containerRef.current, {
+    const [instance] = initOvertype(containerRef.current, {
       value,
       readOnly: true,
-      toolbar: false,
-      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-      fontSize: '14px',
-      lineHeight: 1.5,
     } as any);
     editorRef.current = instance;
 
@@ -211,7 +207,6 @@ function MarkdownViewerNode({ data, globals, queries }: { data?: any; globals: a
     const root = containerRef.current.querySelector('.overtype-root') as HTMLElement | null;
     if (root) {
       root.style.height = '100%';
-      root.style.background = 'transparent';
     }
 
     return () => {
@@ -224,7 +219,7 @@ function MarkdownViewerNode({ data, globals, queries }: { data?: any; globals: a
     <div className="h-full" style={{ height }}>
       <div
         ref={containerRef}
-        className="h-full bg-white/10 border border-gray-300 rounded"
+        className="h-full border border-[var(--bevel-dark)] rounded shadow-inner overflow-hidden"
       />
     </div>
   );
