@@ -1,0 +1,11 @@
+- [ ] the list of available apps is an os-level "query" (doesn't go to hypersauce, but is available as data to an app.
+- [ ] switching apps is an OS-level "action"
+- [ ] now we can write the apps app (the app switcher) using plain hypernote!
+- [ ] extend the app-switching action to take an optional argument. apps can register what kind of data they handle (literal nostr kind: kine 0 app can display profiles, kind 1 app can display notes, kind 30078 app can display raw json maybe, another kind 0 app could show contact list for a user...
+- [ ] flows I want to unlock: make the editor app be able to be run with multiple instances. if you click "edit" on one app it opens one instance of the editor app. if you click "edit" on another app, it opens a second instance of the editor app. no more sidebar.
+- [ ] an editor app defined with all these primitives could ALSO be a pure hypernote app!
+- [ ] or imagine an app that does AI image prompts. it has an input text box, when you submit the prompt it gets back an image url. that would be a good app on its own! but THEN what if that could be wired up to other apps? apps could "request" an image from the AI image app. you could imagine one app where you write blog posts, hooked into an app for images, and an app for AI copy edits, and then the output of that writing app is a "publisher" app. this will need some CAREFUL design to make sure it doesn't spiral out of control. but I've always wanted this in an OS! app to app pipes!
+- [ ] we need a good way to upload images, and list the images the user has uploaded. I believe blossom listings are private by default so the user should store their list of private uploads in an encrypted list somewhere? needs some thought
+- [ ] how do we do a "filesystem"? especially for storing drafts. I think those can be published encryped as well with a draft tag?
+- [ ] build a wallet at the "OS level". this will be available to any app (with clear notifications that an app wants to spend money. apps can have a "budget" that is set up on first spend use. this is actually a higher priority than most of the things on this list lol.
+
