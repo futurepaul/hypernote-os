@@ -116,6 +116,9 @@ const systemActionHandlers: Record<string, SystemActionHandler> = {
 
 type ActionReference = { scope: 'system' | 'actions'; name: string }
 
+// Parse user-facing action strings into explicit namespaces. We accept
+// `system.*` or `actions.*` (defaulting to document actions when no prefix is
+// provided) so runtime dispatch does not need to guess or normalize names.
 function parseActionReference(raw?: string): ActionReference | null {
   if (!raw) return null
   let value = String(raw).trim()
@@ -281,6 +284,7 @@ function deepClone<T>(value: T): T {
   return value
 }
 
+// Lightweight guard to ensure YAML blocks produced actual maps before cloning.
 function isPlainObject(value: unknown): value is Record<string, any> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }

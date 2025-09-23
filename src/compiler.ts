@@ -255,9 +255,17 @@ const flush = () => {
         if (stack.length > 1) stack.pop();
         continue;
       }
-      // Unknown fence — treat as normal markdown (rendered by toHast)
-      const fr = stack[stack.length - 1];
-      if (fr) fr.group.push(t);
+      // Unknown fence — treat as literal code block so documentation can show
+      // sample syntax without the compiler trying to interpret it.
+      flush();
+      const lang = (t.lang || '').trim();
+      const value = (t.value || '').replace(/\n$/, '');
+      pushNode({
+        id: genId(),
+        type: 'literal_code' as any,
+        text: value,
+        data: lang ? { lang } : undefined,
+      });
     } else {
       const fr2 = stack[stack.length - 1];
       if (fr2) fr2.group.push(t);
@@ -283,6 +291,8 @@ const flush = () => {
 
   const ast = (root.children || []) as UiNode[]
   ensureDepsRecursive(ast)
+  // Capture a per-document summary of query/global usage so the runtime can
+  // subscribe only to the streams it needs (e.g. skip $time.now when unused).
   const docDependencies = collectDocDependencies(ast)
   if (docDependencies) {
     normalizedMeta.dependencies = docDependencies

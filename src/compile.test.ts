@@ -163,6 +163,20 @@ describe("compiler", () => {
     expect(decompiled).toContain("```each.start");
   });
 
+  test("unknown fenced code becomes literal", () => {
+    const md = `---\nname: Literal\n---\n\n\`\`\`js\nconsole.log('hello');\n\`\`\`\n`;
+    const compiled = compileMarkdownDoc(md);
+    const literal = compiled.ast.find(n => (n as any).type === 'literal_code') as any;
+    expect(literal).toBeTruthy();
+    expect(literal.text).toContain("console.log");
+    expect(literal.data?.lang).toBe('js');
+
+    const roundtrip = compileMarkdownDoc(decompile(compiled));
+    const rtLiteral = roundtrip.ast.find(n => (n as any).type === 'literal_code') as any;
+    expect(rtLiteral?.text).toContain("console.log");
+    expect(rtLiteral?.data?.lang).toBe('js');
+  });
+
 
   test("button payload retains moustache templates", () => {
     const md = `---\nname: Button\n---\n\n\`\`\`button\ntext: Install\naction: "@install_app"\npayload:\n  naddr: "{{ $app.0.naddr }}"\n\`\`\`\n`;

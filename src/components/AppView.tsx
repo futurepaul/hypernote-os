@@ -30,6 +30,8 @@ export function AppView({ id }: { id: string }) {
     }
   }, [compiled, compileError, setDocActions])
 
+  // Doc metadata precalculates which globals are required; fallback to node
+  // deps only when metadata is missing (e.g. legacy docs).
   const usesTime = useMemo(() => {
     const deps = compiled?.meta?.dependencies?.globals || [];
     if (deps.length) return deps.includes('time');

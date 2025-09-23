@@ -40,6 +40,17 @@ function MarkdownNode({ n, globals, queries }: { n: Node; globals: any; queries:
   return <div className="app-markdown">{content}</div>;
 }
 
+function LiteralCodeBlock({ code, lang }: { code: string; lang?: string }) {
+  return (
+    <pre className="bg-[#f3f0eb] text-sm text-gray-800 rounded border border-gray-300 overflow-x-auto p-3">
+      <code className="font-mono">
+        {lang ? `${lang}\n` : ''}
+        {code}
+      </code>
+    </pre>
+  );
+}
+
 function ButtonNode({ text, globals, action, windowId, queries, payloadSpec }: { text?: string; globals: any; action?: string; windowId: string; queries: Record<string, any>; payloadSpec?: any }) {
   const label = (interpolateText(String(text ?? ""), globals, queries).trim() || "Button");
   const payload = useMemo(() => buildPayload(payloadSpec, globals, queries), [payloadSpec, globals, queries]);
@@ -304,6 +315,15 @@ export function RenderNodes({ nodes, globals, windowId, queries, statuses, inlin
           queries={queries}
           statuses={statuses}
           debug={debug}
+        />
+      );
+    }
+    if (n.type === "literal_code") {
+      return (
+        <LiteralCodeBlock
+          key={n.id || key}
+          code={typeof n.text === 'string' ? n.text : ''}
+          lang={typeof n.data?.lang === 'string' ? n.data.lang : undefined}
         />
       );
     }

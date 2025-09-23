@@ -19,6 +19,7 @@ const BaseNodeSchema = z.object({
     z.literal("vstack"),
     z.literal("each"),
     z.literal("markdown_editor"),
+    z.literal("literal_code"),
   ]),
   deps: NodeDepsSchema,
 });
@@ -32,6 +33,12 @@ const MarkdownNodeSchema = BaseNodeSchema.extend({
 
 const ActionableNodeSchema = BaseNodeSchema.extend({
   type: z.union([z.literal("button"), z.literal("input"), z.literal("markdown_editor")]),
+  data: unknownRecord.optional(),
+});
+
+const LiteralCodeNodeSchema = BaseNodeSchema.extend({
+  type: z.literal("literal_code"),
+  text: z.string().optional(),
   data: unknownRecord.optional(),
 });
 
@@ -57,6 +64,7 @@ export const UiNodeSchema = z.union([
   ActionableNodeSchema,
   StackNodeSchema,
   EachNodeSchema,
+  LiteralCodeNodeSchema,
 ]);
 
 export type UiNode = z.infer<typeof UiNodeSchema>;

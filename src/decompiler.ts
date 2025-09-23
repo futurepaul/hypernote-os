@@ -51,6 +51,12 @@ function encodeNode(n: UiNode): string {
     const lang = n.type === 'markdown_editor' ? 'markdown-editor' : n.type
     return `\n\`\`\`${lang}\n${y}\n\`\`\`\n`
   }
+  if ((n as any).type === 'literal_code') {
+    const lang = typeof (n as any).data?.lang === 'string' ? (n as any).data.lang : ''
+    const fence = lang ? `\n\`\`\`${lang}\n` : `\n\`\`\`\n`
+    const body = (n as any).text ?? ''
+    return `${fence}${body}\n\`\`\`\n`
+  }
   if (n.type === 'hstack' || n.type === 'vstack') {
     const kind = n.type
     const config = sanitizeStackConfig(n.data)

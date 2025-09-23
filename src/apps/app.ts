@@ -2,6 +2,7 @@ import poast from "../../sample_apps/poast.md";
 import profile from "../../sample_apps/profile.md";
 import wallet from "../../sample_apps/wallet.md";
 import appStore from "../../sample_apps/app-store.md";
+import welcome from "../../sample_apps/welcome.md";
 
 export const defaultApps: Record<string, string> = {
   // invisible apps but we need them to be here for the compiler to work
@@ -34,4 +35,5 @@ System-wide actions.
   profile,
   wallet,
   appStore,
+  welcome,
 };

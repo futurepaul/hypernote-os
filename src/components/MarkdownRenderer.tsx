@@ -121,11 +121,7 @@ function extractUrlFromSibling(node: any, scope: MarkdownScope): string | null {
 
 function interpolateScalar(value: unknown, scope: MarkdownScope): string {
   const raw = typeof value === "string" ? value : "";
-  const viaTemplate = interpolateTemplate(raw, scope);
-  if (viaTemplate !== raw) return viaTemplate;
-  const resolved = resolveReference(raw.trim(), scope);
-  if (resolved != null && resolved !== undefined) return String(resolved);
-  return viaTemplate;
+  return interpolateTemplate(raw, scope);
 }
 
 function interpolateAttribute(value: unknown, scope: MarkdownScope): string {
