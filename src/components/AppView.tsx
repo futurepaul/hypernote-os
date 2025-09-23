@@ -30,8 +30,11 @@ export function AppView({ id }: { id: string }) {
     }
   }, [compiled, compileError, setDocActions])
 
-  // Detect if this document references $time.now; if not, don't subscribe to time updates
-  const usesTime = useMemo(() => astUsesGlobal(nodes, 'time'), [nodes]);
+  const usesTime = useMemo(() => {
+    const deps = compiled?.meta?.dependencies?.globals || [];
+    if (deps.length) return deps.includes('time');
+    return nodes.some(node => node.deps?.globals?.includes('time'));
+  }, [compiled?.meta?.dependencies?.globals, nodes]);
 
   // Select only the slices we need for this window
   const globalsUser = useAtomValue(userAtom);
@@ -57,18 +60,12 @@ export function AppView({ id }: { id: string }) {
   const renderCount = useRef(0);
   const debug = useAtomValue(debugAtom)
   useEffect(() => {
-    const n = ++renderCount.current;
-    try {
-      // summarize keys to avoid huge logs
-      const k = Object.keys(rawScalars || {});
-      // Useful for debugging where re-renders are happening but noisy because of the clock
-      // console.log(`[Render] AppView ${id} #${n}`, { docLen: doc.length, usesTime, timeNow, userPubkey: globalsUser?.pubkey, scalars: k });
-    } catch {}
+    renderCount.current += 1;
   });
 
   useEffect(() => {
-    console.log(`[Cause] ${id}: doc changed`, { len: doc.length });
-  }, [doc]);
+    if (debug) console.log(`[Cause] ${id}: doc changed`, { len: doc.length });
+  }, [doc, debug, id]);
   useEffect(() => {
       if (usesTime && debug) console.log(`[Cause] ${id}: $time.now`, timeNow);
   }, [timeNow, usesTime, debug]);
@@ -217,20 +214,6 @@ function useQuerySnapshotState(streams: Record<string, any> | undefined): { data
   }, [streams])
 
   return state
-}
-
-function astUsesGlobal(nodes: UiNode[], target: string): boolean {
-  if (!nodes || !nodes.length) return false;
-  const queue = [...nodes];
-  while (queue.length) {
-    const node = queue.pop();
-    if (!node) continue;
-    if (node.deps?.globals?.includes(target)) return true;
-    if (Array.isArray((node as any).children)) {
-      queue.push(...((node.children as UiNode[]) || []));
-    }
-  }
-  return false;
 }
 
 function resolveMetaValue(value: any, scope: ReferenceScope): any {

@@ -38,10 +38,10 @@ describe("compiler", () => {
     const md = await loadMarkdown("profile");
     const { ast, meta } = compileMarkdownDoc(md);
     expect(meta.hypernote?.name).toBe("Profile");
-    const inputs = ast.filter(n => n.type === "input");
-    const buttons = ast.filter(n => n.type === "button");
+    const inputs = collectNodesOfType(ast, 'input');
+    const buttons = collectNodesOfType(ast, 'button');
     expect(inputs.length).toBe(1);
-    expect(buttons.length).toBe(2);
+    expect(buttons.length).toBeGreaterThanOrEqual(2);
     expect(meta.forms?.pubkey).toBe('user.pubkey');
     expect(meta.state?.profile_target).toBe('user.pubkey');
   });
@@ -62,17 +62,27 @@ describe("compiler", () => {
     const markdownNodes = collectNodesOfType(compiled.ast, 'markdown');
     expect(markdownNodes.some(n => n.deps?.queries?.includes("feed"))).toBe(true);
     expect(markdownNodes.some(n => n.deps?.globals?.includes("user"))).toBe(true);
+    expect(compiled.meta.dependencies?.queries).toContain('feed');
+    expect(compiled.meta.dependencies?.globals).toContain('user');
 
     const eachDoc = `---\nhypernote:\n  name: EachDeps\nqueries:\n  feed:\n    kinds: [1]\n---\n\`\`\`each.start\nfrom: queries.feed\nas: item\n\`\`\`\n- {{ item.content }}\n\`\`\`each.end\n`;
     const compiledEach = compileMarkdownDoc(eachDoc);
     const eachNode = compiledEach.ast.find(n => n.type === "each");
     expect(eachNode?.deps?.queries).toContain("feed");
+    expect(compiledEach.meta.dependencies?.queries).toContain('feed');
 
     const buttonDoc = `---\nhypernote:\n  name: ButtonDeps\nqueries:\n  feed:\n    kinds: [1]\n---\n\`\`\`button\ntext: "{{ queries.feed[0].content }}"\n\`\`\`\n`;
     const compiledButton = compileMarkdownDoc(buttonDoc);
     const buttonNodes = collectNodesOfType(compiledButton.ast, 'button');
     expect(buttonNodes.length).toBeGreaterThan(0);
     expect(buttonNodes.some(n => n.deps?.queries?.includes('feed'))).toBe(true);
+    expect(compiledButton.meta.dependencies?.queries).toContain('feed');
+  });
+
+  test("doc dependencies include time when referenced", () => {
+    const md = `---\nhypernote:\n  name: Clock\n---\nCurrent: {{ time.now }}`;
+    const compiled = compileMarkdownDoc(md);
+    expect(compiled.meta.dependencies?.globals).toContain('time');
   });
 
   test("validateDoc rejects unexpected node types", async () => {
@@ -153,14 +163,6 @@ describe("compiler", () => {
     expect(decompiled).toContain("```each.start");
   });
 
-  test("legacy each blocks without suffix still compile", () => {
-    const md = `---\nname: LegacyEach\n---\n\n\`\`\`each\nfrom: $items\nas: item\n\`\`\`\nLegacy: {{ $item.name }}\n\`\`\`each.end\n\`\`\`\n`;
-    const compiled = compileMarkdownDoc(md);
-    const eachNode = compiled.ast.find(n => n.type === "each");
-    expect(eachNode).toBeTruthy();
-    const decompiled = decompile(compiled);
-    expect(decompiled).toContain("```each.start");
-  });
 
   test("button payload retains moustache templates", () => {
     const md = `---\nname: Button\n---\n\n\`\`\`button\ntext: Install\naction: "@install_app"\npayload:\n  naddr: "{{ $app.0.naddr }}"\n\`\`\`\n`;

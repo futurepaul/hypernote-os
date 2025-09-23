@@ -196,7 +196,7 @@ const flush = () => {
         pushNode(node);
         continue;
       }
-      if (info === "hstack start" || info === "hstack.start") {
+      if (info === "hstack.start") {
         flush();
         const raw = (t.value || "").trim();
         const parsed = raw ? safeParseYamlBlock(raw) : undefined;
@@ -212,7 +212,7 @@ const flush = () => {
         stack.push({ node, group: [] });
         continue;
       }
-      if (info === "vstack start" || info === "vstack.start") {
+      if (info === "vstack.start") {
         flush();
         const raw = (t.value || "").trim();
         const parsed = raw ? safeParseYamlBlock(raw) : undefined;
@@ -228,7 +228,7 @@ const flush = () => {
         stack.push({ node, group: [] });
         continue;
       }
-      if (info === "each" || info === "each start" || info === "each.start") {
+      if (info === "each.start") {
         flush();
         const rawBlock = (t.value || "").trim();
         const parsed = safeParseYamlBlock(rawBlock);
@@ -283,6 +283,10 @@ const flush = () => {
 
   const ast = (root.children || []) as UiNode[]
   ensureDepsRecursive(ast)
+  const docDependencies = collectDocDependencies(ast)
+  if (docDependencies) {
+    normalizedMeta.dependencies = docDependencies
+  }
   const candidate: CompiledDoc = validateDoc({
     version: DOC_VERSION,
     meta: normalizedMeta,
@@ -330,6 +334,32 @@ function normalizeMarkdownAst(nodes: any[]): any[] {
     }
     return clone;
   });
+}
+
+function collectDocDependencies(nodes: UiNode[]): { globals?: string[]; queries?: string[] } | undefined {
+  if (!nodes?.length) return undefined
+  const globals = new Set<string>()
+  const queries = new Set<string>()
+
+  const walk = (node: UiNode) => {
+    const deps = node.deps
+    if (deps?.globals) {
+      for (const g of deps.globals) globals.add(g)
+    }
+    if (deps?.queries) {
+      for (const q of deps.queries) queries.add(q)
+    }
+    if (Array.isArray((node as any).children)) {
+      for (const child of (node.children as UiNode[]) || []) walk(child)
+    }
+  }
+
+  for (const node of nodes) walk(node)
+
+  const result: { globals?: string[]; queries?: string[] } = {}
+  if (globals.size) result.globals = Array.from(globals).sort()
+  if (queries.size) result.queries = Array.from(queries).sort()
+  return result.globals || result.queries ? result : undefined
 }
 
 function mergeImageReferences(children: any[]): any[] {

@@ -6,8 +6,8 @@ import { formsAtom } from "../state/formsAtoms";
 import { interpolate as interp } from "../interp/interpolate";
 import { useAction } from "../state/actions";
 import { renderMarkdownAst, type MarkdownScope } from "./MarkdownRenderer";
-import { sanitizeStackConfig } from "../lib/layout";
 import { resolveReference, referenceQueryId, isReferenceExpression } from "../interp/reference";
+import { deriveLoopKey } from "../lib/render";
 
 export type Node = UiNode;
 
@@ -23,62 +23,6 @@ type RenderNodesProps = {
 
 function interpolateText(text: string, globals: any, queries: Record<string, any>) {
   return interp(text, { globals, queries });
-}
-
-function isLikelyId(value: string): boolean {
-  return /^[0-9a-f]{64}$/i.test(value) || value.startsWith('naddr1') || value.startsWith('note1')
-}
-
-function extractStableId(value: any, seen: WeakSet<object>): string | null {
-  if (value == null) return null
-  if (typeof value === 'string') return isLikelyId(value) ? value : null
-  if (typeof value !== 'object') return null
-  if (seen.has(value)) return null
-  seen.add(value)
-
-  const candidate = (value as any).id ?? (value as any).naddr ?? (value as any).event?.id
-  if (typeof candidate === 'string' && candidate.length > 0) return candidate
-
-  if (Array.isArray(value)) {
-    for (const entry of value) {
-      const nested = extractStableId(entry, seen)
-      if (nested) return nested
-    }
-  } else {
-    for (const entry of Object.values(value)) {
-      if (typeof entry === 'string') {
-        if (isLikelyId(entry)) return entry
-      } else if (entry && typeof entry === 'object') {
-        const nested = extractStableId(entry, seen)
-        if (nested) return nested
-      }
-    }
-  }
-  return null
-}
-
-function hashObject(value: any): string {
-  try {
-    const json = JSON.stringify(value)
-    let hash = 0
-    for (let i = 0; i < json.length; i++) {
-      hash = (hash * 31 + json.charCodeAt(i)) | 0
-    }
-    return Math.abs(hash).toString(36)
-  } catch {
-    return ''
-  }
-}
-
-function deriveLoopKey(nodeId: string | undefined, item: any, index: number): string {
-  const base = nodeId ? String(nodeId) : 'each'
-  const stableId = extractStableId(item, new WeakSet())
-  if (stableId) return `${base}-${stableId}`
-  // fall back to hashing the payload so React doesn't thrash DOM nodes when
-  // new posts arrive mid-list (e.g. live feeds)
-  const hashed = hashObject(item)
-  if (hashed) return `${base}-${hashed}`
-  return `${base}-idx-${index}`
 }
 
 function MarkdownNode({ n, globals, queries }: { n: Node; globals: any; queries: Record<string, any> }) {
@@ -215,7 +159,7 @@ function EachNode({ node, globals, windowId, queries, statuses, debug = false }:
   const listRaw = resolveReference(sourceExpr, { globals, queries });
   const sourceQueryId = referenceQueryId(sourceExpr);
   const status = sourceQueryId ? statuses?.[sourceQueryId] : undefined;
-  console.log(`[Each] source=${sourceExpr}`, { status, listRaw });
+  if (debug) console.log(`[Each] source=${sourceExpr}`, { status, listRaw });
   if (status === 'loading' || status === null || (status === undefined && listRaw === undefined)) {
     return <div className="italic text-sm text-gray-600">Loading…</div>;
   }
@@ -281,12 +225,11 @@ function buildPayload(spec: any, globals: any, queries: Record<string, any>) {
 }
 
 function stackStyleFromData(data: any): CSSProperties | undefined {
-  const config = sanitizeStackConfig(data);
-  if (!config) return undefined;
+  if (!data || typeof data !== 'object') return undefined;
   const style: CSSProperties = {};
-  if (config.width) style.width = config.width;
-  if (config.height) style.height = config.height;
-  return style;
+  if (typeof data.width === 'string' && data.width.length) style.width = data.width;
+  if (typeof data.height === 'string' && data.height.length) style.height = data.height;
+  return Object.keys(style).length ? style : undefined;
 }
 
 export function RenderNodes({ nodes, globals, windowId, queries, statuses, inline = false, debug = false }: RenderNodesProps) {

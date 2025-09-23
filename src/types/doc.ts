@@ -75,6 +75,13 @@ const HypernoteSectionSchema = z
 const QueryDefinitionSchema = unknownRecord;
 const ActionDefinitionSchema = z.unknown();
 
+const DependencySchema = z
+  .object({
+    globals: z.array(z.string()).optional(),
+    queries: z.array(z.string()).optional(),
+  })
+  .optional();
+
 export const HypernoteMetaSchema = z
   .object({
     hypernote: HypernoteSectionSchema.optional(),
@@ -84,6 +91,7 @@ export const HypernoteMetaSchema = z
     state: z.record(z.string(), z.unknown()).optional(),
     components: z.record(z.string(), z.unknown()).optional(),
     events: z.record(z.string(), z.unknown()).optional(),
+    dependencies: DependencySchema,
   })
   .catchall(z.unknown());
 

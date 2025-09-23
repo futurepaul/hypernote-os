@@ -10,7 +10,7 @@ This document surveys the current Hypernote / Hypersauce DSL surfaces (frontmatt
 | Code fences | ` ```button`, ` ```input`, ` ```each.start`, etc. | Produce UI nodes with YAML payloads (`safeParseYamlBlock`). Multiple spellings exist (e.g. `hstack start` vs `hstack.start`). |
 | Runtime queries | `hypersauce/dsl.ts`, `types.ts`, `client.ts` | `QueryDefinition` mixes filter fields (`kinds`, `authors`, `#t`, …) with pipe transform stages. |
 | Pipe engine | `hypersauce/pipe-engine.ts` | Executes array of imperative ops (`get`, `first`, `json`, `kvconnect_pick`, …). |
-| Actions | `actions:` map in frontmatter → `src/state/actions.ts` | Templates for Nostr events; interpolated with `{{ }}` and `resolveDollar` helpers. |
+| Actions | `actions:` map in frontmatter → `src/state/actions.ts` | Templates for Nostr events; interpolated with `{{ }}` and the shared reference resolver. |
 | Moustache interpolation | `src/interp/interpolate.ts` | Replaces `{{ expr }}`; supports `||` fallback, `queries.foo[0]`/`user.pubkey` paths. No inline piping yet. |
 
 ## 2. Current Inconsistencies & Redundancies
@@ -48,7 +48,7 @@ PAUL: yes, this looks good to me. I like that it removes the `$` prefix! do we e
 PAUL: I like input / output a lot! `from` for query ids makes a lot of sense. and sure singular keys.
 
 ### 2.3 Multiple spellings
-- Code fences accept both `hstack.start` and `hstack start`; same for `each`. Let’s pick **dot notation** everywhere and drop the space form (`compiler.ts` still checks both).
+- Code fences previously accepted both `hstack.start` and `hstack start`; same for `each`. As of the latest compiler pass only dot notation is accepted, and we keep a temporary compatibility shim for bare ` ```each` blocks until sample docs are migrated.
 - Frontmatter tags use `#t` arrays, but toFilter simply assigns `filter['#t'] = v`; no merging of multiple tag lists. Adding two `#t` entries silently overwrites.
 
 PAUL: yes please get rid of `hstack start` and `each start`! they should always have a dot notation.

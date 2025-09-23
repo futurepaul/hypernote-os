@@ -82,8 +82,14 @@ Tasks
    - Global dependencies (`time.now`, `user.pubkey`, `form.*`).
 2. Store dependency metadata alongside `DocIR` so `AppView` can subscribe to `timeNowAtom` only when needed (no on-the-fly regex scanning).
 3. Strip `ButtonNode` and `InputNode` of inline pubkey inference; instead, they call system actions that handle side effects.
-4. Move helper functions (`extractStableId`, `hashObject`, etc.) into a separate utilities module if they remain necessary, documented as pure transforms.
-5. Ensure moustache interpolation keeps using the reference resolver + local pipe registry, but returns data without mutating globals or queries.
+4. Audit renderer-side “normalize*” helpers (e.g. layout sanitizers, metadata massaging). Where validation can enforce constraints upfront, delete the normalizer and rely on schema-validated shapes instead.
+5. Move helper functions (`extractStableId`, `hashObject`, etc.) into a separate utilities module if they remain necessary, documented as pure transforms.
+6. Ensure moustache interpolation keeps using the reference resolver + local pipe registry, but returns data without mutating globals or queries.
+
+Progress
+- ✅ Removed redundant `sanitizeStackConfig` call in the renderer; stack nodes now trust compiler-normalized layout data.
+- ✅ Moved loop-key helpers into `lib/render.ts` and gated debug logging so renderer stays side-effect free by default.
+- ✅ Compiler now lifts per-doc dependency metadata (`meta.dependencies`), letting AppView skip rescanning nodes when toggling time subscriptions.
 
 Validation
 - Tests verifying dependency metadata drives subscriptions (e.g., disable time ticker when not referenced).
@@ -111,6 +117,14 @@ Validation
 - **Schema versioning:** decide whether to bump the published doc version (`1.2.x → 1.3.0`?) once schema hardening lands.
 - **Performance:** caching `DocIR` should reduce work, but watch memory usage when many docs open simultaneously.
 - **Action namespaces:** ensure reserved system action names cannot be overridden by documents (validation rule in schema?).
+
+## Normalization Watchlist
+- Many modules still rely on inline `normalize*` helpers (layout sanitizers, action name normalization, metadata cloning). As we tighten the doc schema, evaluate each helper: remove if validation guarantees shape, or move into shared utilities with tests when unavoidable.
+- Prefer schema-enforced or compiler-enforced shapes over runtime normalization in renderer/action paths to keep behaviour predictable and reduce duplicate transformations.
+- Track suspicious normalizers during each workstream and either delete them or mark them with a comment noting why they remain.
+- Compiler currently rewrites `each` fences from `{ from }` to `{ source }`; once docs are migrated, enforce a single key and drop the rewrite.
+- Dot-notation fences (`hstack.start`, `each.start`) are now required; no runtime normalization remains.
+- Action names still flow through `normalizeActionName`; explore validating frontmatter keys instead of renaming at runtime.
 
 ---
 
