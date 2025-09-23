@@ -2,6 +2,12 @@
 hypernote:
   name: Profile
   icon: contact.png
+  handles:
+    - kind: 0
+      state:
+        profile_target: payload.pubkey
+      forms:
+        pubkey: payload.pubkey
 forms:
   pubkey: user.pubkey
 state:

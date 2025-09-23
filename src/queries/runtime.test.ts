@@ -2,9 +2,10 @@ import { expect, test } from 'bun:test'
 import { getDefaultStore } from 'jotai'
 import { queryRuntime } from './runtime'
 import { hypersauceClientAtom } from '../state/hypersauce'
-import { windowQueryStreamsAtom, windowScalarsAtom } from '../state/queriesAtoms'
+import { windowQueryStreamsAtom } from '../state/queriesAtoms'
+import { debugAtom } from '../state/appAtoms'
 
-test('queryRuntime wires composeDocQueries streams', async () => {
+test('queryRuntime exposes composeDocQueries streams', async () => {
   const store = getDefaultStore()
   const windowId = 'window-test'
   const relays = ['wss://example']
@@ -15,48 +16,56 @@ test('queryRuntime wires composeDocQueries streams', async () => {
     },
   }
 
-  const payload = [new Map([['foo', 'bar']])]
-  const fakeStream = {
-    subscribe(observer: any) {
-      observer?.next?.(payload)
-      return { unsubscribe() {} }
-    },
-  }
-
+  const payload = [{ foo: 'bar' }]
   let capturedDoc: any
-  let initialScalars: any = null
+  let initialSeed: Record<string, any> | null = null
+  let capturedDebug: any = null
   const client = {
-    composeDocQueries(doc: any) {
+    composeDocQueries(doc: any, _context: any, opts?: any) {
       capturedDoc = doc
-      return new Map([["$feed", fakeStream]])
+      capturedDebug = opts
+      return new Map([
+        [
+          '$feed',
+          {
+            subscribe(observer: any) {
+              observer?.next?.(payload)
+              return { unsubscribe() {} }
+            },
+          },
+        ],
+      ])
     },
     setRelays() {},
   }
 
   store.set(hypersauceClientAtom, client)
+  store.set(debugAtom, true)
 
   await queryRuntime.start({
     windowId,
     meta,
     relays,
     context: { user: { pubkey: 'abc' } },
-    onScalars: (value) => { initialScalars = value },
+    onScalars: (value) => { initialSeed = value },
   })
 
-  expect(capturedDoc?.queries?.feed).toEqual(meta.queries.feed)
-  expect(initialScalars).toEqual({ feed: [] })
+  expect(capturedDoc?.$feed).toEqual(meta.queries.feed)
+  expect(typeof capturedDebug?.onDebug).toBe('function')
+  expect(initialSeed).toEqual({ feed: [] })
 
   const streams = store.get(windowQueryStreamsAtom(windowId))
   expect(Object.keys(streams)).toEqual(['feed'])
 
   const results: any[] = []
-  const sub = streams.feed.subscribe((value: any) => results.push(value))
-  sub.unsubscribe()
-  expect(results.length).toBeGreaterThan(0)
-  expect(results[0][0]).toEqual({ foo: 'bar' })
-
-  expect(store.get(windowScalarsAtom(windowId))).toEqual({})
+  const subscription = streams.feed.subscribe((value: any) => {
+    results.push(value)
+  })
+  subscription.unsubscribe()
+  expect(results[0]).toEqual(payload)
 
   queryRuntime.stop(windowId)
+  expect(store.get(windowQueryStreamsAtom(windowId))).toEqual({})
+
   store.set(hypersauceClientAtom, null)
 })

@@ -46,7 +46,7 @@ function encodeNode(n: UiNode): string {
     const text = markdownToText(nodes || [])
     return text.trim()
   }
-  if (n.type === 'button' || n.type === 'input' || n.type === 'markdown_editor') {
+  if (n.type === 'button' || n.type === 'input' || n.type === 'markdown_editor' || n.type === 'note') {
     const y = YAML.stringify(n.data || {}).trimEnd()
     const lang = n.type === 'markdown_editor' ? 'markdown-editor' : n.type
     return `\n\`\`\`${lang}\n${y}\n\`\`\`\n`

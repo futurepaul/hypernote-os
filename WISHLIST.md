@@ -2,10 +2,20 @@
 - [ ] switching apps is an OS-level "action"
 - [ ] now we can write the apps app (the app switcher) using plain hypernote!
 - [ ] extend the app-switching action to take an optional argument. apps can register what kind of data they handle (literal nostr kind: kine 0 app can display profiles, kind 1 app can display notes, kind 30078 app can display raw json maybe, another kind 0 app could show contact list for a user...
+- [ ] it would be especially nice to be able to click on a profile name in the feed app and it opens the profile app and you can see their profile! (another use-case would be click their name and you go to a view of just their posts
 - [ ] flows I want to unlock: make the editor app be able to be run with multiple instances. if you click "edit" on one app it opens one instance of the editor app. if you click "edit" on another app, it opens a second instance of the editor app. no more sidebar.
 - [ ] an editor app defined with all these primitives could ALSO be a pure hypernote app!
+- [ ] also a debug viewer that can render the AST of an app as raw json. liked editor, it should be multi-app!
 - [ ] or imagine an app that does AI image prompts. it has an input text box, when you submit the prompt it gets back an image url. that would be a good app on its own! but THEN what if that could be wired up to other apps? apps could "request" an image from the AI image app. you could imagine one app where you write blog posts, hooked into an app for images, and an app for AI copy edits, and then the output of that writing app is a "publisher" app. this will need some CAREFUL design to make sure it doesn't spiral out of control. but I've always wanted this in an OS! app to app pipes!
 - [ ] we need a good way to upload images, and list the images the user has uploaded. I believe blossom listings are private by default so the user should store their list of private uploads in an encrypted list somewhere? needs some thought
 - [ ] how do we do a "filesystem"? especially for storing drafts. I think those can be published encryped as well with a draft tag?
 - [ ] build a wallet at the "OS level". this will be available to any app (with clear notifications that an app wants to spend money. apps can have a "budget" that is set up on first spend use. this is actually a higher priority than most of the things on this list lol.
+- [ ] we should handle a href links in markdown to open in a new tab
+- [ ] eventually we could have a web browser (single window per url!) too!
+- [ ] we need to be able to have a special note-renderer node that takes a kind 1 nostr event (or an nevent address). we'll use this is feed to render the note.content. we can turn links into links, naddr into profile links, and nevent to event links / or event embeds. also we can render inline .gif / mov / jpg / png files appropriately.
+- [ ] we should build a cashu wallet into the os so we have system.* actions for pay_invoice, mint cashu token, etc. we could probably use coco-cashu for this
+- [ ] we should make a nip44 encrypted messaging app for sending dms
+- [ ] we should support context vm with a easy-to-use jsonrpc caller (contextvm should be as easy as calling an action and saying which pubkey is listening
+- [ ] because we have 'state' now as a concept, can we make a todo app that publishes its state as encrypted 30078 json data? as an easy start it could just have a single todo at a time
+
 

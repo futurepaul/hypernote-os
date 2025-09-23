@@ -3,12 +3,12 @@ import { useEffect, useCallback } from "react";
 import { useAtomValue, useSetAtom, useAtom } from 'jotai'
 import { docsAtom, timeNowAtom, closeWindowAtom, openWindowsAtom, openWindowAtom, bringWindowToFrontAtom, relaysAtom, bootStageAtom, userAtom, editorSelectionAtom } from './state/appAtoms'
 import { hypersauceClientAtom } from './state/hypersauce'
+import { queryEpochAtom } from './state/queriesAtoms'
 import { LoginWindow } from './components/LoginWindow'
 import { parseFrontmatterName } from './state/docs'
 import { DraggableWindow } from './components/DraggableWindow'
 import { AppView } from './components/AppView'
 import { EditorPanel } from './components/EditorPanel'
-import { AppSwitcherPanel } from './components/AppSwitcherPanel'
 import { SystemMenuPanel } from './components/SystemMenuPanel'
 
 export function App() {
@@ -24,6 +24,7 @@ export function App() {
   const bringToFront = useSetAtom(bringWindowToFrontAtom)
   const setEditorSelection = useSetAtom(editorSelectionAtom)
   const setHS = useSetAtom(hypersauceClientAtom)
+  const bumpQueryEpoch = useSetAtom(queryEpochAtom)
   const relays = useAtomValue(relaysAtom)
   const [bootStage, setBootStage] = useAtom(bootStageAtom)
   const user = useAtomValue(userAtom)
@@ -39,11 +40,13 @@ export function App() {
         const client = new HS({ relays })
         if (!alive) return
         setHS(client)
+        bumpQueryEpoch((value) => value + 1)
         setBootStage(user.pubkey ? 'ready' : 'login')
       } catch (e) {
         console.warn('[Hypersauce] module not available', e)
         setHS(null)
         setBootStage('login')
+        bumpQueryEpoch((value) => value + 1)
       }
     })()
     return () => { alive = false }
@@ -66,7 +69,7 @@ export function App() {
         if (!doc) return null
         const canEdit = id !== 'editor'
         const isClosable = id !== 'apps'
-        const isEditable = canEdit && !['apps', 'system'].includes(id)
+        const isEditable = canEdit && id !== 'system'
         const contentClass = id === 'editor'
           ? "bg-[var(--win-bg)] text-sm text-gray-900 p-0"
           : "bg-[var(--win-bg)] p-3 text-sm text-gray-900 max-h-[90vh] overflow-y-auto min-w-[200px]"
@@ -79,7 +82,7 @@ export function App() {
             onClose={isClosable ? () => closeWindow(id) : undefined}
             onEdit={isEditable ? () => handleEdit(id) : undefined}
           >
-            {id === 'editor' ? <EditorPanel /> : id === 'apps' ? <AppSwitcherPanel /> : id === 'system' ? <SystemMenuPanel /> : <AppView id={id} />}
+            {id === 'editor' ? <EditorPanel /> : id === 'system' ? <SystemMenuPanel /> : <AppView id={id} />}
           </DraggableWindow>
         )
       })}

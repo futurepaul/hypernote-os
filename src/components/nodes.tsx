@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState, useRef, useCallback, Fragment, type ReactNode, type CSSProperties } from "react";
+import { useMemo, useEffect, useState, useRef, useCallback, Fragment, type ReactNode, type CSSProperties, type MouseEvent } from "react";
 import { initOvertype } from "../lib/overtypeTheme";
 import { useAtom, useAtomValue } from "jotai";
 import type { UiNode } from "../compiler";
@@ -8,6 +8,8 @@ import { useAction } from "../state/actions";
 import { renderMarkdownAst, type MarkdownScope } from "./MarkdownRenderer";
 import { resolveReference, referenceQueryId, isReferenceExpression } from "../interp/reference";
 import { deriveLoopKey } from "../lib/render";
+import { formatDateHelper } from "../lib/datetime";
+import { nip19 } from "nostr-tools";
 
 export type Node = UiNode;
 
@@ -25,19 +27,251 @@ function interpolateText(text: string, globals: any, queries: Record<string, any
   return interp(text, { globals, queries });
 }
 
-function MarkdownNode({ n, globals, queries }: { n: Node; globals: any; queries: Record<string, any> }) {
+function MarkdownNode({ n, globals, queries, windowId }: { n: Node; globals: any; queries: Record<string, any>; windowId: string }) {
   const deps = useMemo(() => {
     const refs = Array.isArray(n.refs) ? n.refs : [];
     return refs.map(ref => JSON.stringify(resolveReference(ref, { globals, queries }) ?? ''));
   }, [n.refs, queries, globals]);
 
   const scope = useMemo<MarkdownScope>(() => ({ globals, queries }), [globals, queries]);
+  const switchApp = useAction('system.switch_app', windowId);
+  const handleNostrLink = useCallback((href: string) => {
+    if (!switchApp) return false;
+    const payload = buildSwitchPayloadFromNostrUri(href);
+    if (!payload) return false;
+    switchApp(payload, { windowId, globals, queries }).catch(err => console.warn('nostr link action failed', err));
+    return true;
+  }, [switchApp, windowId, globals, queries]);
+
   const content = useMemo(() => {
     const tokens = Array.isArray(n.markdown) ? n.markdown : [];
-    return renderMarkdownAst(tokens, scope);
-  }, [n.id, scope, ...deps]);
+    return renderMarkdownAst(tokens, scope, { onNostrLink: handleNostrLink });
+  }, [n.id, scope, handleNostrLink, ...deps]);
 
   return <div className="app-markdown">{content}</div>;
+}
+
+const URL_REGEX = /(https?:\/\/[^\s]+|nostr:[^\s]+)/g;
+const TRAILING_PUNCT = new Set(['.', ',', '!', '?', ':', ';', ')', ']', '"', '\'']);
+const IMAGE_EXTENSIONS = /(\.png|\.jpe?g|\.gif|\.webp)$/i;
+const VIDEO_EXTENSIONS = /(\.mp4|\.mov|\.m4v|\.webm)$/i;
+
+type TokenizedLine = Array<{ type: 'text' | 'link'; value: string; href?: string; trailing?: string }>;
+
+function tokenizeNoteContent(content: string): { lines: TokenizedLine[]; media: string[] } {
+  if (!content) return { lines: [], media: [] };
+  const lines: TokenizedLine[] = [];
+  const mediaUrls: string[] = [];
+  const seenMedia = new Set<string>();
+  const rawLines = content.split(/\n+/);
+
+  rawLines.forEach((rawLine) => {
+    if (!rawLine.length) {
+      lines.push([{ type: 'text', value: '' }]);
+      return;
+    }
+    const parts = rawLine.split(URL_REGEX);
+    const lineTokens: TokenizedLine = [];
+    parts.forEach((part, index) => {
+      if (!part) return;
+      if (index % 2 === 1) {
+        if (/^https?:\/\//i.test(part)) {
+          const { core, trailing } = splitTrailingPunctuation(part);
+          const href = core || part;
+          lineTokens.push({ type: 'link', value: core || part, href });
+          if (trailing) lineTokens.push({ type: 'text', value: trailing });
+          const normalized = core || part;
+          if (isMediaUrl(normalized) && !seenMedia.has(normalized)) {
+            seenMedia.add(normalized);
+            mediaUrls.push(normalized);
+          }
+          return;
+        }
+        if (/^nostr:/i.test(part)) {
+          const { core, trailing } = splitTrailingPunctuation(part);
+          const href = core || part;
+          lineTokens.push({ type: 'link', value: core || part, href });
+          if (trailing) lineTokens.push({ type: 'text', value: trailing });
+          return;
+        }
+      }
+      lineTokens.push({ type: 'text', value: part });
+    });
+    lines.push(lineTokens);
+  });
+
+  return { lines, media: mediaUrls };
+}
+
+function splitTrailingPunctuation(value: string): { core: string; trailing: string } {
+  let core = value;
+  let trailing = '';
+  while (core.length > 0 && TRAILING_PUNCT.has(core[core.length - 1]!)) {
+    trailing = core[core.length - 1]! + trailing;
+    core = core.slice(0, -1);
+  }
+  return { core, trailing };
+}
+
+function isMediaUrl(url: string): boolean {
+  return isImageUrl(url) || isVideoUrl(url);
+}
+
+function isImageUrl(url: string): boolean {
+  return IMAGE_EXTENSIONS.test(normalizeUrl(url));
+}
+
+function isVideoUrl(url: string): boolean {
+  return VIDEO_EXTENSIONS.test(normalizeUrl(url));
+}
+
+function normalizeUrl(url: string): string {
+  try {
+    return decodeURIComponent(url);
+  } catch {
+    return url;
+  }
+}
+
+function NoteNode({ data, globals, queries, windowId }: { data?: any; globals: any; queries: Record<string, any>; windowId: string }) {
+  const eventSpec = data?.event ?? data?.source ?? data?.value ?? data?.note;
+  const profileSpec = data?.profile;
+
+  const event = useMemo(() => buildPayload(eventSpec, globals, queries), [eventSpec, globals, queries]);
+  const profile = useMemo(() => buildPayload(profileSpec, globals, queries), [profileSpec, globals, queries]);
+
+  const note = event && typeof event === 'object' ? event : null;
+  const content = typeof note?.content === 'string' ? note.content : '';
+  const pubkeyRaw = typeof note?.pubkey === 'string' ? note.pubkey : '';
+  const pubkey = pubkeyRaw ? pubkeyRaw.toLowerCase() : '';
+  const createdAt = note?.created_at;
+  const activeFilter = typeof globals?.state?.filter_pubkey === 'string' && globals.state.filter_pubkey.trim()
+    ? globals.state.filter_pubkey.trim().toLowerCase()
+    : null;
+
+  const name = useMemo(() => {
+    if (profile && typeof profile === 'object') {
+      const display = (profile as any)?.display_name || (profile as any)?.name;
+      if (typeof display === 'string' && display.trim()) return display.trim();
+    }
+    if (typeof note?.author === 'string' && note.author.trim()) return note.author.trim();
+    if (typeof pubkeyRaw === 'string' && pubkeyRaw.length > 8) {
+      return `${pubkeyRaw.slice(0, 8)}…${pubkeyRaw.slice(-4)}`;
+    }
+    return pubkeyRaw || 'Unknown';
+  }, [profile, note?.author, pubkeyRaw, note]);
+
+  const avatarUrl = useMemo(() => {
+    if (profile && typeof profile === 'object') {
+      const raw = (profile as any)?.picture;
+      if (typeof raw === 'string' && raw.trim()) return raw.trim();
+    }
+    return null;
+  }, [profile]);
+
+  const parsedContent = useMemo(() => tokenizeNoteContent(content), [content]);
+  const switchApp = useAction('system.switch_app', windowId);
+
+  const handleAuthorClick = useCallback(() => {
+    if (!switchApp || !pubkeyRaw) return;
+    switchApp({ kind: 0, pubkey: pubkeyRaw, value: pubkeyRaw }, { windowId, globals, queries }).catch(err => console.warn('switch_app failed', err));
+  }, [switchApp, pubkeyRaw, windowId, globals, queries]);
+
+  if (!note) return null;
+  if (activeFilter && pubkey && activeFilter !== pubkey) return null;
+
+  const showHeader = !!profile;
+  const paragraphs = parsedContent.lines.map((line, idx) => {
+    if (line.length === 1 && line[0]?.value === '') {
+      return <div key={`gap-${idx}`} className="h-2" />;
+    }
+    return (
+      <p key={`p-${idx}`} className="whitespace-pre-wrap break-words leading-relaxed text-[15px]">
+        {line.map((token, tokenIdx) => {
+          if (token.type === 'link' && token.href) {
+            const isNostr = token.href.startsWith('nostr:');
+            const onClick = isNostr && switchApp ? (event: MouseEvent<HTMLAnchorElement>) => {
+              event.preventDefault();
+              const payload = buildSwitchPayloadFromNostrUri(token.href);
+              if (payload) switchApp(payload, { windowId, globals, queries }).catch(err => console.warn('nostr link action failed', err));
+            } : undefined;
+            return (
+              <a
+                key={`link-${idx}-${tokenIdx}`}
+                href={token.href}
+                target={isNostr ? undefined : '_blank'}
+                rel={isNostr ? undefined : 'noreferrer'}
+                onClick={onClick}
+                className="text-blue-600 hover:underline break-words"
+              >
+                {token.value}
+              </a>
+            );
+          }
+          return <span key={`text-${idx}-${tokenIdx}`}>{token.value}</span>;
+        })}
+      </p>
+    );
+  });
+
+  const mediaNodes = parsedContent.media.map((url, idx) => {
+    if (isVideoUrl(url)) {
+      return (
+        <video key={`vid-${idx}`} controls className="max-w-full rounded border border-[var(--bevel-dark)]">
+          <source src={url} />
+        </video>
+      );
+    }
+    return (
+      <img
+        key={`img-${idx}`}
+        src={url}
+        alt="note media"
+        className="max-w-full rounded border border-[var(--bevel-dark)]"
+      />
+    );
+  });
+
+  const timestamp = createdAt != null ? formatDateHelper(createdAt, 'datetime') : null;
+  const secondary = profile && typeof profile === 'object' && (profile as any)?.name && (profile as any)?.display_name && (profile as any)?.name !== (profile as any)?.display_name
+    ? (profile as any)?.name
+    : undefined;
+
+  if (!showHeader) {
+    return (
+      <div className="flex flex-col gap-2">
+        {paragraphs.length ? paragraphs : null}
+        {mediaNodes.length ? <div className="flex flex-col gap-2">{mediaNodes}</div> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex gap-3">
+      <div className="w-12 h-12 rounded border border-[var(--bevel-dark)] bg-[var(--chrome-bg)] overflow-hidden flex items-center justify-center text-sm font-semibold text-gray-700">
+        {avatarUrl ? (
+          <img src={`${avatarUrl}?w=96`} alt="avatar" className="w-full h-full object-cover" />
+        ) : (
+          <span>{name.slice(0, 2).toUpperCase()}</span>
+        )}
+      </div>
+      <div className="flex-1 flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleAuthorClick}
+            className="text-sm font-semibold text-blue-700 hover:underline"
+          >
+            {name}
+          </button>
+          {secondary && <span className="text-xs text-gray-500">{secondary}</span>}
+          {timestamp && <span className="text-xs text-gray-500 ml-auto">{timestamp}</span>}
+        </div>
+        {paragraphs.length ? <div className="flex flex-col gap-2">{paragraphs}</div> : null}
+        {mediaNodes.length ? <div className="flex flex-col gap-2">{mediaNodes}</div> : null}
+      </div>
+    </div>
+  );
 }
 
 function LiteralCodeBlock({ code, lang }: { code: string; lang?: string }) {
@@ -51,23 +285,53 @@ function LiteralCodeBlock({ code, lang }: { code: string; lang?: string }) {
   );
 }
 
-function ButtonNode({ text, globals, action, windowId, queries, payloadSpec }: { text?: string; globals: any; action?: string; windowId: string; queries: Record<string, any>; payloadSpec?: any }) {
-  const label = (interpolateText(String(text ?? ""), globals, queries).trim() || "Button");
+function ButtonNode({ text, globals, action, windowId, queries, payloadSpec, data }: { text?: string; globals: any; action?: string; windowId: string; queries: Record<string, any>; payloadSpec?: any; data?: any }) {
+  const labelRaw = interpolateText(String(text ?? ""), globals, queries);
+  const label = (labelRaw.trim() || "Button");
+  const appearance = typeof data?.appearance === 'string' ? data.appearance : undefined;
+  const iconSrc = appearance === 'app_tile' && typeof data?.icon === 'string'
+    ? (() => {
+        const resolved = interpolateText(data.icon, globals, queries).trim();
+        return resolved ? resolved : undefined;
+      })()
+    : undefined;
   const payload = useMemo(() => buildPayload(payloadSpec, globals, queries), [payloadSpec, globals, queries]);
   const run = useAction(action, windowId);
+
+  const handleClick = useCallback(() => {
+    if (!action) {
+      console.log("ButtonNode: no action defined");
+      return;
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[ButtonNode] payload', payload);
+    }
+    run(payload, { windowId, globals, queries }).catch(e => console.warn('action error', e));
+  }, [action, payload, run, windowId, globals, queries]);
+
+  if (appearance === 'app_tile') {
+    const initials = label.slice(0, 2).toUpperCase();
+    return (
+      <button
+        className="flex flex-col items-center gap-1 px-3 pt-3 pb-2 border border-gray-700 bg-[#c9c3bb] shadow-[inset_-2px_-2px_0_0_#6b7280,inset_2px_2px_0_0_#ffffff] hover:brightness-105 min-w-[92px]"
+        onClick={handleClick}
+      >
+        {iconSrc ? (
+          <img src={iconSrc} alt="" className="w-8 h-8 object-contain" />
+        ) : (
+          <div className="w-8 h-8 rounded border border-gray-700 bg-[#dcd6cd] flex items-center justify-center text-xs font-semibold text-gray-700">
+            {initials}
+          </div>
+        )}
+        <span className="text-xs text-gray-900 text-center leading-tight">{label}</span>
+      </button>
+    );
+  }
+
   return (
     <button
       className="bg-gray-200 hover:bg-gray-300 text-gray-900 border border-gray-500 rounded px-3 py-1 text-sm"
-      onClick={() => {
-        if (!action) {
-          console.log("ButtonNode: no action defined");
-          return;
-        }
-        if (process.env.NODE_ENV !== 'production') {
-          console.log('[ButtonNode] payload', payload);
-        }
-        run(payload, { windowId, globals, queries }).catch(e => console.warn('action error', e));
-      }}
+      onClick={handleClick}
     >
       {label}
     </button>
@@ -274,7 +538,7 @@ function EachNode({ node, globals, windowId, queries, statuses, debug = false }:
 }
 
 function buildPayload(spec: any, globals: any, queries: Record<string, any>) {
-  if (!spec || typeof spec !== 'object') return undefined;
+  if (spec === undefined) return undefined;
 
   const scope = { globals, queries };
 
@@ -305,13 +569,83 @@ function stackStyleFromData(data: any): CSSProperties | undefined {
   const style: CSSProperties = {};
   if (typeof data.width === 'string' && data.width.length) style.width = data.width;
   if (typeof data.height === 'string' && data.height.length) style.height = data.height;
+  if (typeof data.gap === 'string' && data.gap.length) style.gap = data.gap;
+  if (typeof data.gap === 'number' && Number.isFinite(data.gap)) style.gap = `${data.gap}px`;
+  if (data.wrap) style.flexWrap = 'wrap';
+  if (typeof data.align === 'string' && data.align.length) style.alignItems = data.align;
+  if (typeof data.justify === 'string' && data.justify.length) style.justifyContent = data.justify;
   return Object.keys(style).length ? style : undefined;
+}
+
+function buildSwitchPayloadFromNostrUri(href: string): Record<string, any> | null {
+  if (typeof href !== 'string') return null;
+  const trimmed = href.trim();
+  if (!trimmed.toLowerCase().startsWith('nostr:')) return null;
+  const value = trimmed.slice('nostr:'.length);
+  if (!value) return null;
+  try {
+    const decoded = nip19.decode(value);
+    switch (decoded.type) {
+      case 'npub': {
+        const pubkey = bytesOrStringToHex(decoded.data);
+        if (!pubkey) return null;
+        return { kind: 0, pubkey, value: trimmed, uri: trimmed };
+      }
+      case 'nprofile': {
+        const data = decoded.data as { pubkey?: string };
+        const pubkey = typeof data.pubkey === 'string' ? data.pubkey : null;
+        if (!pubkey) return null;
+        return { kind: 0, pubkey, value: trimmed, uri: trimmed, relays: Array.isArray(data.relays) ? data.relays : undefined };
+      }
+      case 'note': {
+        const id = bytesOrStringToHex(decoded.data);
+        if (!id) return null;
+        return { kind: 1, eventId: id, value: trimmed, uri: trimmed };
+      }
+      case 'nevent': {
+        const data = decoded.data as { id: string; author?: string; kind?: number; relays?: string[] };
+        if (!data?.id) return null;
+        return {
+          kind: typeof data.kind === 'number' ? data.kind : 1,
+          eventId: data.id,
+          author: data.author,
+          relays: Array.isArray(data.relays) ? data.relays : undefined,
+          value: trimmed,
+          uri: trimmed,
+        };
+      }
+      case 'naddr': {
+        const data = decoded.data as { identifier: string; kind: number; pubkey: string; relays?: string[] };
+        if (!data || typeof data.kind !== 'number' || typeof data.pubkey !== 'string') return null;
+        return {
+          kind: data.kind,
+          identifier: data.identifier,
+          pubkey: data.pubkey,
+          naddr: value,
+          value: trimmed,
+          uri: trimmed,
+          relays: Array.isArray(data.relays) ? data.relays : undefined,
+        };
+      }
+      default:
+        return null;
+    }
+  } catch (err) {
+    console.warn('Failed to decode nostr link', err);
+    return null;
+  }
+}
+
+function bytesOrStringToHex(data: string | Uint8Array | undefined): string | null {
+  if (!data) return null;
+  if (typeof data === 'string') return data;
+  return Array.from(data).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 export function RenderNodes({ nodes, globals, windowId, queries, statuses, inline = false, debug = false }: RenderNodesProps) {
   const renderNode = (n: Node, key: number): ReactNode => {
     if (n.type === "markdown") {
-      return <MarkdownNode key={n.id || key} n={n} globals={globals} queries={queries} />;
+      return <MarkdownNode key={n.id || key} n={n} globals={globals} queries={queries} windowId={windowId} />;
     }
     if (n.type === "button") {
       return (
@@ -323,6 +657,7 @@ export function RenderNodes({ nodes, globals, windowId, queries, statuses, inlin
           windowId={windowId}
           queries={queries}
           payloadSpec={n.data?.payload}
+          data={n.data}
         />
       );
     }
@@ -390,6 +725,17 @@ export function RenderNodes({ nodes, globals, windowId, queries, statuses, inlin
           queries={queries}
           statuses={statuses}
           debug={debug}
+        />
+      );
+    }
+    if (n.type === "note") {
+      return (
+        <NoteNode
+          key={n.id || key}
+          data={n.data}
+          globals={globals}
+          queries={queries}
+          windowId={windowId}
         />
       );
     }

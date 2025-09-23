@@ -6,6 +6,8 @@ import { relaysAtom, userAtom, docsAtom, openWindowAtom, bringWindowToFrontAtom,
 import { formsAtom } from './formsAtoms'
 import { docStateAtom } from './docStateAtoms'
 import { hypersauceClientAtom } from './hypersauce'
+import { installedAppsAtom, appHandlesAtom, windowIntentAtom, type SystemAppHandle } from './systemAtoms'
+import { queryEpochAtom } from './queriesAtoms'
 import { SimplePool, type Event, nip19, getPublicKey } from 'nostr-tools'
 import { interpolate as interpolateTemplate } from '../interp/interpolate'
 import { isDefaultDocId, loadUserDocs, saveUserDocs } from './docs'
@@ -112,6 +114,48 @@ const systemActionHandlers: Record<string, SystemActionHandler> = {
       alert('Install failed: ' + (e as any)?.message)
     }
   },
+  switch_app: async ({ payload, scope, store }) => {
+    const docs = store.get(docsAtom)
+    const { id: targetId, handle } = resolveSwitchTarget(payload, store, docs)
+    if (!targetId) {
+      console.warn('@switch_app: unable to resolve target for payload', payload)
+      return
+    }
+    store.set(openWindowAtom, targetId)
+    store.set(bringWindowToFrontAtom, targetId)
+    try {
+      store.set(windowIntentAtom(targetId), payload ?? null)
+    } catch (err) {
+      console.warn('@switch_app: failed to persist intent', err)
+    }
+
+    if (handle && (handle.forms || handle.state)) {
+      const refScope: ReferenceScope = {
+        globals: scope?.globals ?? {},
+        queries: scope?.queries ?? {},
+      }
+      if (handle.forms) {
+        const resolvedForms = evaluateActionUpdates(handle.forms, refScope)
+        if (resolvedForms) {
+          try {
+            store.set(formsAtom(targetId), (prev: Record<string, any> | undefined) => ({ ...(prev || {}), ...resolvedForms }))
+          } catch (err) {
+            console.warn('@switch_app: failed to update forms', err)
+          }
+        }
+      }
+      if (handle.state) {
+        const resolvedState = evaluateActionUpdates(handle.state, refScope)
+        if (resolvedState) {
+          try {
+            store.set(docStateAtom(targetId), (prev: Record<string, any> | undefined) => ({ ...(prev || {}), ...resolvedState }))
+          } catch (err) {
+            console.warn('@switch_app: failed to update state', err)
+          }
+        }
+      }
+    }
+  },
 }
 
 type ActionReference = { scope: 'system' | 'actions'; name: string }
@@ -152,8 +196,10 @@ export function useSystemAction(name?: string, windowId?: string) {
       if (name) console.warn('Unknown system action', name)
       return
     }
+    const baseGlobals = ctx?.globals ?? {}
+    const scopeGlobals = { ...baseGlobals, payload }
     const scope: ActionScope = {
-      globals: ctx?.globals ?? {},
+      globals: scopeGlobals,
       queries: ctx?.queries ?? {},
     }
     const targetWindowId = ctx?.windowId ?? windowId
@@ -358,6 +404,94 @@ function resolvePubkeyCandidate(payload: any, scope: ActionScope): string | null
   return null
 }
 
+type SwitchResolution = { id: string; handle?: SystemAppHandle | null } | null
+
+function resolveSwitchTarget(payload: any, store: ReturnType<typeof getDefaultStore>, docs: Record<string, string>): SwitchResolution {
+  if (!docs || typeof docs !== 'object') return null
+
+  const directId = coerceDocIdFromPayload(payload)
+  if (directId && Object.prototype.hasOwnProperty.call(docs, directId)) {
+    return { id: directId }
+  }
+
+  const kind = extractKindFromPayload(payload)
+  if (kind !== null) {
+    try {
+      const orderedApps = store.get(installedAppsAtom)
+      const handlesMap = store.get(appHandlesAtom)
+      for (const app of orderedApps) {
+        const handles = handlesMap[app.id] || app.handles || []
+        const match = handles.find(h => h.kind === kind)
+        if (match) return { id: app.id, handle: match }
+      }
+      for (const [id, handles] of Object.entries(handlesMap)) {
+        if (!handles || !handles.length) continue
+        const match = handles.find(h => h.kind === kind)
+        if (match && Object.prototype.hasOwnProperty.call(docs, id)) {
+          return { id, handle: match }
+        }
+      }
+    } catch (err) {
+      console.warn('@switch_app: failed to inspect handles', err)
+    }
+  }
+
+  const fallback = selectDefaultAppId(docs)
+  return fallback ? { id: fallback } : null
+}
+
+function coerceDocIdFromPayload(payload: any): string | null {
+  if (typeof payload === 'string') {
+    const trimmed = payload.trim()
+    if (!trimmed) return null
+    if (trimmed.startsWith('app:')) return trimmed.slice(4)
+    return trimmed
+  }
+  if (payload && typeof payload === 'object') {
+    const candidates = [
+      (payload as any).id,
+      (payload as any).docId,
+      (payload as any).app,
+      (payload as any).appId,
+      (payload as any).window,
+      (payload as any).value,
+    ]
+    for (const candidate of candidates) {
+      if (typeof candidate === 'string' && candidate.trim()) return candidate.trim()
+    }
+  }
+  return null
+}
+
+function extractKindFromPayload(payload: any): number | null {
+  if (typeof payload === 'number' && Number.isFinite(payload)) return payload
+  if (!payload || typeof payload !== 'object') return null
+  const candidates = [
+    (payload as any).kind,
+    (payload as any).event?.kind,
+    (payload as any).target?.kind,
+    (payload as any).data?.kind,
+  ]
+  for (const candidate of candidates) {
+    if (candidate === undefined || candidate === null) continue
+    if (typeof candidate === 'number' && Number.isFinite(candidate)) return candidate
+    if (typeof candidate === 'string') {
+      const parsed = Number(candidate)
+      if (!Number.isNaN(parsed)) return parsed
+    }
+  }
+  return null
+}
+
+function selectDefaultAppId(docs: Record<string, string>): string | null {
+  if (Object.prototype.hasOwnProperty.call(docs, 'apps')) return 'apps'
+  for (const id of Object.keys(docs)) {
+    if (id === 'system') continue
+    return id
+  }
+  return null
+}
+
 function extractPubkey(raw: unknown): string | null {
   if (typeof raw !== 'string') return null
   const trimmed = raw.trim()
@@ -414,6 +548,9 @@ function setUserPubkey(store: ReturnType<typeof getDefaultStore>, pubkey: string
   const prev = store.get(userAtom) || { pubkey: null }
   if (prev.pubkey === pubkey) return
   store.set(userAtom, { ...prev, pubkey })
+  try {
+    store.set(queryEpochAtom, (value: number) => value + 1)
+  } catch {}
 }
 
 function applyActionPipe(event: any, pipeSpec: any[]) {

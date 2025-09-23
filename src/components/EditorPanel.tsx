@@ -15,7 +15,7 @@ export function EditorPanel() {
   const relays = useAtomValue(relaysAtom)
   const builtinOrder = useMemo(() => Object.keys(getDefaultDocs()), [])
   const files = useMemo(() => {
-    const nonEditable = new Set(['apps', 'editor', 'system'])
+    const nonEditable = new Set(['editor', 'system'])
     const seen = new Set<string>()
     const ordered: string[] = []
     builtinOrder.forEach((id) => {

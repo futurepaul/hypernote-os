@@ -120,4 +120,14 @@ height: 180
 - Reference local form/state values with `\{{ form.field }}` or `\{{ state.key }}`.
 - Test round-trip serialization with `bun test` to ensure your app publishes cleanly.
 
+## Built-in Nodes & Nostr Links
+
+- ```note``` renders a nostr event body. Pass the event in `event:` and optionally a profile map in `profile:` if you want the renderer to draw avatar/name/timestamp. When `profile` is omitted the node emits just the parsed content.
+- Markdown links support the `nostr:` scheme. Examples:
+  - `[View profile](nostr:{{ queries.feed[0].npub }})`
+  - `[Open note](nostr:{{ queries.feed[0].nevent }})`
+  - `[Launch app](nostr:{{ queries.feed[0].naddr }})`
+
+Links automatically dispatch `system.switch_app` based on the decoded payload, so apps can lean on OS-level handlers instead of wiring bespoke buttons.
+
 Explore the other sample apps for working examples, then make it your own!

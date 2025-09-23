@@ -207,6 +207,17 @@ const flush = () => {
         pushNode(node);
         continue;
       }
+      if (info === "note" || info === "nostr.note" || info === "note-renderer" || info === "note_renderer") {
+        flush();
+        const rawBlock = (t.value || "").trim();
+        const parsed = safeParseYamlBlock(rawBlock);
+        const data = restoreTemplateData(parsed, templates.map);
+        const deps = deriveDepsFromData(data);
+        const node: UiNode = { id: genId(), type: "note", data };
+        if (deps) node.deps = deps;
+        pushNode(node);
+        continue;
+      }
       if (info === "hstack.start") {
         flush();
         const raw = (t.value || "").trim();

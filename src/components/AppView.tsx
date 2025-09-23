@@ -1,7 +1,7 @@
 import { useMemo, useEffect, useRef, useState } from "react";
 import { compileMarkdownDoc, type UiNode } from "../compiler";
 import { useAtomValue, useSetAtom } from 'jotai'
-import { windowQueryStreamsAtom } from '../state/queriesAtoms'
+import { windowQueryStreamsAtom, queryEpochAtom } from '../state/queriesAtoms'
 import { docAtom, userAtom, relaysAtom, windowTimeAtom, debugAtom, compiledDocAtom } from '../state/appAtoms'
 import { formsAtom } from '../state/formsAtoms'
 import { docStateAtom } from '../state/docStateAtoms'
@@ -9,9 +9,10 @@ import { queryRuntime } from '../queries/runtime'
 import { docActionsAtom, buildDocActionMap } from '../state/actions'
 import { RenderNodes } from './nodes'
 import { parseReference, resolveReference, type ReferenceScope } from '../interp/reference'
+import { installedAppsAtom, windowIntentAtom } from '../state/systemAtoms'
+import { hypersauceClientAtom } from '../state/hypersauce'
 
 export function AppView({ id }: { id: string }) {
-  // Select only the doc text for this window to avoid global re-renders
   const doc = useAtomValue(docAtom(id)) || "";
   const { doc: compiled, error: compileError } = useAtomValue(compiledDocAtom(id));
   const docActionsAtomRef = useMemo(() => docActionsAtom(id), [id])
@@ -30,24 +31,32 @@ export function AppView({ id }: { id: string }) {
     }
   }, [compiled, compileError, setDocActions])
 
-  // Doc metadata precalculates which globals are required; fallback to node
-  // deps only when metadata is missing (e.g. legacy docs).
   const usesTime = useMemo(() => {
     const deps = compiled?.meta?.dependencies?.globals || [];
     if (deps.length) return deps.includes('time');
     return nodes.some(node => node.deps?.globals?.includes('time'));
   }, [compiled?.meta?.dependencies?.globals, nodes]);
 
-  // Select only the slices we need for this window
   const globalsUser = useAtomValue(userAtom);
   const timeNow = useAtomValue(windowTimeAtom(id));
   const queryStreams = useAtomValue(windowQueryStreamsAtom(id));
+  const queryEpoch = useAtomValue(queryEpochAtom)
+  const appsList = useAtomValue(installedAppsAtom)
+  const intentAtomRef = useMemo(() => windowIntentAtom(id), [id])
+  const launchIntent = useAtomValue(intentAtomRef)
+  const hypersauceClient = useAtomValue(hypersauceClientAtom)
   const formsAtomRef = useMemo(() => formsAtom(id), [id])
   const forms = useAtomValue(formsAtomRef)
   const setForms = useSetAtom(formsAtomRef)
   const stateAtomRef = useMemo(() => docStateAtom(id), [id])
   const docState = useAtomValue(stateAtomRef)
   const setDocState = useSetAtom(stateAtomRef)
+  const systemGlobals = useMemo(() => ({
+    apps: appsList,
+    intent: launchIntent,
+    window: { id },
+  }), [appsList, launchIntent, id]);
+
   const globals = useMemo(() => {
     const timeObj = { now: timeNow };
     return {
@@ -55,10 +64,34 @@ export function AppView({ id }: { id: string }) {
       time: timeObj,
       form: forms,
       state: docState,
+      system: systemGlobals,
     };
-  }, [globalsUser, timeNow, forms, docState]);
-  // Fallback: if Hypersauce queries are unavailable, derive $profile from user.profile
-  // Per-render logging to trace causes
+  }, [globalsUser, timeNow, forms, docState, systemGlobals]);
+  const formDefaultsRef = useRef<Record<string, any>>({})
+  const stateDefaultsRef = useRef<Record<string, any>>({})
+  const stateReady = useMemo(() => {
+    const defs = compiled?.meta?.state;
+    if (!defs || typeof defs !== 'object') return true;
+    if (!docState) return false;
+    return Object.entries(defs).every(([key, raw]) => {
+      const current = docState[key];
+      if (current === undefined || current === null) return false;
+      if (typeof raw === 'string' && current === raw) return false;
+      return true;
+    });
+  }, [compiled?.meta?.state, docState]);
+  const formsReady = useMemo(() => {
+    const defs = compiled?.meta?.forms;
+    if (!defs || typeof defs !== 'object') return true;
+    if (!forms) return false;
+    return Object.entries(defs).every(([key, raw]) => {
+      const current = forms[key];
+      if (current === undefined || current === null) return false;
+      if (typeof raw === 'string' && current === raw) return false;
+      return true;
+    });
+  }, [compiled?.meta?.forms, forms]);
+
   const renderCount = useRef(0);
   const debug = useAtomValue(debugAtom)
   useEffect(() => {
@@ -69,75 +102,93 @@ export function AppView({ id }: { id: string }) {
     if (debug) console.log(`[Cause] ${id}: doc changed`, { len: doc.length });
   }, [doc, debug, id]);
   useEffect(() => {
-      if (usesTime && debug) console.log(`[Cause] ${id}: $time.now`, timeNow);
-  }, [timeNow, usesTime, debug]);
+    if (usesTime && debug) console.log(`[Cause] ${id}: $time.now`, timeNow);
+  }, [timeNow, usesTime, debug, id]);
   useEffect(() => {
     if (debug) console.log(`[Cause] ${id}: user.pubkey`, globalsUser?.pubkey);
-  }, [globalsUser?.pubkey, debug]);
+  }, [globalsUser?.pubkey, debug, id]);
   useEffect(() => {
     if (debug) console.log(`[Cause] ${id}: state keys`, Object.keys(docState || {}));
   }, [docState, debug, id]);
   useEffect(() => {
     if (debug) console.log(`[Cause] ${id}: query streams`, Object.keys(queryStreams || {}));
-  }, [queryStreams, debug]);
+  }, [queryStreams, debug, id]);
+
   useEffect(() => {
     if (!compiled || compileError) return;
     const defaults = compiled.meta?.forms;
     if (!defaults || typeof defaults !== 'object') return;
     const scope: ReferenceScope = {
-      globals: { user: globalsUser, time: { now: timeNow } },
+      globals: { user: globalsUser, time: { now: timeNow }, system: systemGlobals },
       queries: {},
     };
     setForms(prev => {
       const prevObj = prev || {};
       let changed = false;
       const next = { ...prevObj };
+      const defaultsCache = formDefaultsRef.current;
       for (const [key, raw] of Object.entries(defaults)) {
-        if (next[key] !== undefined && next[key] !== '') continue;
         const resolved = resolveMetaValue(raw, scope);
-        if (resolved !== undefined && resolved !== next[key]) {
+        if (resolved === undefined) continue;
+        const current = next[key];
+        const lastResolved = defaultsCache[key];
+        const shouldOverwrite =
+          current === undefined ||
+          current === '' ||
+          current === raw ||
+          (lastResolved !== undefined && current === lastResolved);
+        defaultsCache[key] = resolved;
+        if (shouldOverwrite && current !== resolved) {
           next[key] = resolved;
           changed = true;
         }
       }
       return changed ? next : prevObj;
     });
-  }, [compiled, compileError, setForms, globalsUser, timeNow]);
+  }, [compiled, compileError, setForms, globalsUser, timeNow, systemGlobals]);
 
   useEffect(() => {
     if (!compiled || compileError) return;
     const defaults = compiled.meta?.state;
     if (!defaults || typeof defaults !== 'object') return;
     const scope: ReferenceScope = {
-      globals: { user: globalsUser, time: { now: timeNow } },
+      globals: { user: globalsUser, time: { now: timeNow }, system: systemGlobals },
       queries: {},
     };
     setDocState(prev => {
       const prevObj = prev || {};
       let changed = false;
       const next = { ...prevObj };
+      const defaultsCache = stateDefaultsRef.current;
       for (const [key, raw] of Object.entries(defaults)) {
-        if (next[key] !== undefined) continue;
         const resolved = resolveMetaValue(raw, scope);
-        if (resolved !== undefined && resolved !== next[key]) {
+        if (resolved === undefined) continue;
+        const current = next[key];
+        const lastResolved = defaultsCache[key];
+        const shouldOverwrite =
+          current === undefined ||
+          current === raw ||
+          (lastResolved !== undefined && current === lastResolved);
+        defaultsCache[key] = resolved;
+        if (shouldOverwrite && current !== resolved) {
           next[key] = resolved;
           changed = true;
         }
       }
       return changed ? next : prevObj;
     });
-  }, [compiled, compileError, setDocState, globalsUser, timeNow]);
+  }, [compiled, compileError, setDocState, globalsUser, timeNow, systemGlobals]);
 
-  // No artificial tick; re-render comes from globals/$time.now store updates
-
-  // Start/stop queries for this app when meta or pubkey changes
   const relays = useAtomValue(relaysAtom)
   useEffect(() => {
     if (!compiled || compileError) return;
+    if (!formsReady || !stateReady) return;
     const userContext = globals.user?.pubkey ? { pubkey: globals.user.pubkey } : undefined
     const ctx: Record<string, any> = {}
     if (userContext) ctx.user = userContext
     if (docState && Object.keys(docState || {}).length > 0) ctx.state = docState
+    if (forms && Object.keys(forms || {}).length > 0) ctx.form = forms
+    if (launchIntent !== undefined && launchIntent !== null) ctx.system = { intent: launchIntent }
     queryRuntime.start({
       windowId: id,
       meta: compiled.meta,
@@ -146,9 +197,9 @@ export function AppView({ id }: { id: string }) {
       onScalars: () => {},
     }).catch(e => console.warn('[Hypersauce] start failed', e))
     return () => queryRuntime.stop(id)
-  }, [id, compiled, compileError, globals.user?.pubkey, relays, docState])
+  }, [id, compiled, compileError, globals.user?.pubkey, relays, docState, forms, launchIntent, hypersauceClient, queryEpoch, formsReady, stateReady])
 
-  const { data: queriesForWindow, statuses: queryStatusMap } = useQuerySnapshotState(queryStreams);
+  const { data: queriesForWindow, statuses: queryStatusMap } = useQuerySnapshotState(queryStreams, id, !!debug)
 
   if (compileError) {
     return (
@@ -169,7 +220,11 @@ export function AppView({ id }: { id: string }) {
 
 type QueryStatus = 'loading' | 'ready' | 'error';
 
-function useQuerySnapshotState(streams: Record<string, any> | undefined): { data: Record<string, any>; statuses: Record<string, QueryStatus> } {
+function useQuerySnapshotState(
+  streams: Record<string, any> | undefined,
+  windowId: string,
+  debug: boolean,
+): { data: Record<string, any>; statuses: Record<string, QueryStatus> } {
   const [state, setState] = useState<{ data: Record<string, any>; statuses: Record<string, QueryStatus> }>({ data: {}, statuses: {} })
 
   useEffect(() => {
@@ -191,6 +246,10 @@ function useQuerySnapshotState(streams: Record<string, any> | undefined): { data
         if (!stream || typeof stream.subscribe !== 'function') return null
         return stream.subscribe({
           next: (value: any) => {
+            if (debug) {
+              const preview = Array.isArray(value) ? { length: value.length } : value
+              console.debug(`[AppView:${windowId}] next ${name}`, preview)
+            }
             setState(prev => ({
               data: { ...prev.data, [name]: value },
               statuses: { ...prev.statuses, [name]: 'ready' },
@@ -198,6 +257,7 @@ function useQuerySnapshotState(streams: Record<string, any> | undefined): { data
           },
           error: (err: any) => {
             const message = err instanceof Error ? err.message : String(err)
+            if (debug) console.warn(`[AppView:${windowId}] error ${name}`, err)
             setState(prev => ({
               data: prev.data,
               statuses: { ...prev.statuses, [name]: 'error' },
@@ -213,7 +273,7 @@ function useQuerySnapshotState(streams: Record<string, any> | undefined): { data
         try { sub.unsubscribe() } catch {}
       }
     }
-  }, [streams])
+  }, [streams, windowId, debug])
 
   return state
 }

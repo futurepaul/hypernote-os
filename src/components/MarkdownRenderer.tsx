@@ -1,26 +1,32 @@
-import { Fragment, type ReactNode } from "react";
+import { Fragment, type ReactNode, type MouseEvent } from "react";
 import type { JSX } from "react";
 import { interpolate as interp } from "../interp/interpolate";
 import { resolveReference } from "../interp/reference";
 
 export type MarkdownScope = { globals: any; queries: Record<string, any> };
 
-export function renderMarkdownAst(nodes: any[], scope: MarkdownScope, keyPrefix = "md"): ReactNode {
+type RenderOptions = {
+  keyPrefix?: string;
+  onNostrLink?: (href: string) => boolean;
+};
+
+export function renderMarkdownAst(nodes: any[], scope: MarkdownScope, options?: RenderOptions): ReactNode {
   if (!Array.isArray(nodes)) return null;
-  return renderBlockNodes(nodes, scope, keyPrefix);
+  const keyPrefix = options?.keyPrefix ?? "md";
+  return renderBlockNodes(nodes, scope, keyPrefix, options);
 }
 
-function renderBlockNodes(nodes: any[], scope: MarkdownScope, keyPrefix: string): ReactNode {
-  return nodes.map((node, index) => renderBlockNode(node, scope, `${keyPrefix}-${index}`));
+function renderBlockNodes(nodes: any[], scope: MarkdownScope, keyPrefix: string, options?: RenderOptions): ReactNode {
+  return nodes.map((node, index) => renderBlockNode(node, scope, `${keyPrefix}-${index}`, options));
 }
 
-function renderBlockNode(node: any, scope: MarkdownScope, key: string): ReactNode {
+function renderBlockNode(node: any, scope: MarkdownScope, key: string, options?: RenderOptions): ReactNode {
   if (!node || typeof node !== "object") return null;
   switch (node.type) {
     case "root":
-      return <Fragment key={key}>{renderBlockNodes(node.children || [], scope, key)}</Fragment>;
+      return <Fragment key={key}>{renderBlockNodes(node.children || [], scope, key, options)}</Fragment>;
     case "paragraph":
-      return <p key={key} className="leading-relaxed text-sm text-gray-900">{renderInlineChildren(node.children || [], scope, `${key}-p`)}</p>;
+      return <p key={key} className="leading-relaxed text-sm text-gray-900">{renderInlineChildren(node.children || [], scope, `${key}-p`, options)}</p>;
     case "heading": {
       const depth = Math.min(6, Math.max(1, Number(node.depth) || 1));
       const Tag = `h${depth}` as keyof JSX.IntrinsicElements;
@@ -32,19 +38,19 @@ function renderBlockNode(node: any, scope: MarkdownScope, key: string): ReactNod
         5: "text-sm font-medium text-gray-900 mt-2 mb-1",
         6: "text-sm font-medium text-gray-900 mt-2 mb-1",
       };
-      return <Tag key={key} className={classes[depth] || classes[4]}>{renderInlineChildren(node.children || [], scope, `${key}-h`)}</Tag>;
+      return <Tag key={key} className={classes[depth] || classes[4]}>{renderInlineChildren(node.children || [], scope, `${key}-h`, options)}</Tag>;
     }
     case "list": {
       const Tag = (node.ordered ? "ol" : "ul") as keyof JSX.IntrinsicElements;
       const listClass = node.ordered
         ? "list-decimal pl-5 space-y-1 text-sm text-gray-900"
         : "list-disc pl-5 space-y-1 text-sm text-gray-900";
-      return <Tag key={key} className={listClass}>{renderBlockNodes(node.children || [], scope, `${key}-li`)}</Tag>;
+      return <Tag key={key} className={listClass}>{renderBlockNodes(node.children || [], scope, `${key}-li`, options)}</Tag>;
     }
     case "listItem":
-      return <li key={key}>{renderBlockNodes(node.children || [], scope, `${key}-c`)}</li>;
+      return <li key={key}>{renderBlockNodes(node.children || [], scope, `${key}-c`, options)}</li>;
     case "blockquote":
-      return <blockquote key={key}>{renderBlockNodes(node.children || [], scope, `${key}-bq`)}</blockquote>;
+      return <blockquote key={key}>{renderBlockNodes(node.children || [], scope, `${key}-bq`, options)}</blockquote>;
     case "thematicBreak":
       return <hr key={key} />;
     case "code":
@@ -57,11 +63,11 @@ function renderBlockNode(node: any, scope: MarkdownScope, key: string): ReactNod
         </pre>
       );
     default:
-      return <Fragment key={key}>{renderInlineNode(node, scope, key)}</Fragment>;
+      return <Fragment key={key}>{renderInlineNode(node, scope, key, options)}</Fragment>;
   }
 }
 
-function renderInlineChildren(children: any[], scope: MarkdownScope, keyPrefix: string): ReactNode {
+function renderInlineChildren(children: any[], scope: MarkdownScope, keyPrefix: string, options?: RenderOptions): ReactNode {
   const out: ReactNode[] = [];
   for (let i = 0; i < children.length; i++) {
     const child = children[i];
@@ -70,26 +76,26 @@ function renderInlineChildren(children: any[], scope: MarkdownScope, keyPrefix: 
       const url = extractUrlFromSibling(next, scope);
       if (url) {
         out.push(
-          <img key={`${keyPrefix}-img-${i}`} src={url} alt={child.alt || child.identifier || ""} />
+          <img key={`${keyPrefix}-img-${i}`} src={url} alt={child.alt || child.identifier || ""} className="max-w-full" />
         );
         i += 1;
         continue;
       }
     }
-    out.push(renderInlineNode(child, scope, `${keyPrefix}-${i}`));
+    out.push(renderInlineNode(child, scope, `${keyPrefix}-${i}`, options));
   }
   return out;
 }
 
-function renderInlineNode(node: any, scope: MarkdownScope, key: string): ReactNode {
+function renderInlineNode(node: any, scope: MarkdownScope, key: string, options?: RenderOptions): ReactNode {
   if (!node || typeof node !== "object") return null;
   switch (node.type) {
     case "text":
       return <Fragment key={key}>{interpolateScalar(node.value, scope)}</Fragment>;
     case "strong":
-      return <strong key={key}>{renderInlineChildren(node.children || [], scope, `${key}-s`)}</strong>;
+      return <strong key={key}>{renderInlineChildren(node.children || [], scope, `${key}-s`, options)}</strong>;
     case "emphasis":
-      return <em key={key}>{renderInlineChildren(node.children || [], scope, `${key}-e`)}</em>;
+      return <em key={key}>{renderInlineChildren(node.children || [], scope, `${key}-e`, options)}</em>;
     case "inlineCode":
       return (
         <code
@@ -103,9 +109,24 @@ function renderInlineNode(node: any, scope: MarkdownScope, key: string): ReactNo
       return <br key={key} />;
     case "link": {
       const href = interpolateAttribute(node.url ?? node.href ?? "", scope);
+      const isNostr = href.startsWith('nostr:');
+      const handleClick = isNostr && options?.onNostrLink
+        ? (event: MouseEvent<HTMLAnchorElement>) => {
+            event.preventDefault();
+            const handled = options.onNostrLink?.(href);
+            if (!handled && href) window.open(href, '_blank', 'noopener,noreferrer');
+          }
+        : undefined;
       return (
-        <a key={key} href={href} target="_blank" rel="noreferrer">
-          {renderInlineChildren(node.children || [], scope, `${key}-l`)}
+        <a
+          key={key}
+          href={href}
+          target={isNostr ? undefined : '_blank'}
+          rel={isNostr ? undefined : 'noreferrer'}
+          onClick={handleClick}
+          className="text-blue-600 hover:underline"
+        >
+          {renderInlineChildren(node.children || [], scope, `${key}-l`, options)}
         </a>
       );
     }
@@ -115,16 +136,16 @@ function renderInlineNode(node: any, scope: MarkdownScope, key: string): ReactNo
       const altRaw = interpolateScalar(node.alt ?? "", scope);
       const alt = altRaw.length ? altRaw : undefined;
       const width = extractWidthFromUrl(src, rawUrl);
-      const props: Record<string, any> = { src };
+      const props: Record<string, any> = { src, className: "max-w-full" };
       if (alt !== undefined) props.alt = alt;
       if (width) props.width = width;
       return <img key={key} {...props} />;
     }
     case "delete":
-      return <del key={key}>{renderInlineChildren(node.children || [], scope, `${key}-d`)}</del>;
+      return <del key={key}>{renderInlineChildren(node.children || [], scope, `${key}-d`, options)}</del>;
     default:
       if (Array.isArray(node.children)) {
-        return <Fragment key={key}>{renderInlineChildren(node.children, scope, key)}</Fragment>;
+        return <Fragment key={key}>{renderInlineChildren(node.children, scope, key, options)}</Fragment>;
       }
       return null;
   }

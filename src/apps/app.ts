@@ -3,19 +3,14 @@ import profile from "../../sample_apps/profile.md";
 import wallet from "../../sample_apps/wallet.md";
 import appStore from "../../sample_apps/app-store.md";
 import welcome from "../../sample_apps/welcome.md";
+import appsDoc from "../../sample_apps/apps.md";
 
 export const defaultApps: Record<string, string> = {
   // invisible apps but we need them to be here for the compiler to work
   //
   // TODO: move these apps to sample_apps as .md files once we can actually
   // define them as hypernotes
-  apps: `---
-hypernote:
-  name: Apps
-  icon: folder.png
----
-Use the app switcher to activate windows.
-`,
+  apps: appsDoc,
   editor: `---
 hypernote:
   name: Editor
