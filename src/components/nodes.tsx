@@ -515,6 +515,7 @@ function MarkdownEditorNode({ data, windowId }: { data?: any; windowId: string }
   const [formValues, setFormValues] = useAtom(formsAtom(windowId));
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<any>(null);
+  const changeHandlerRef = useRef<(val: string) => void>(() => {});
   const rawId = typeof data?.id === 'string' ? data.id : typeof data?.name === 'string' ? data.name : '';
   const fieldName = useMemo(() => {
     const trimmed = String(rawId || '').trim();
@@ -533,14 +534,24 @@ function MarkdownEditorNode({ data, windowId }: { data?: any; windowId: string }
   }, [fieldName, readOnly, setFormValues]);
 
   useEffect(() => {
+    changeHandlerRef.current = handleChange;
+  }, [handleChange]);
+
+  useEffect(() => {
     if (!containerRef.current) return;
     const [instance] = initOvertype(containerRef.current, {
       value: editorValue,
-      onChange: readOnly ? undefined : handleChange,
+      onChange: (val: string) => changeHandlerRef.current(val),
+      placeholder,
     } as any);
     editorRef.current = instance;
 
-    if (readOnly && containerRef.current) {
+    const root = containerRef.current.querySelector('.overtype-root') as HTMLElement | null;
+    if (root) {
+      root.style.height = '100%';
+    }
+
+    if (readOnly) {
       const editable = containerRef.current.querySelector('[contenteditable="true"]') as HTMLElement | null;
       if (editable) {
         editable.setAttribute('contenteditable', 'false');
@@ -548,16 +559,12 @@ function MarkdownEditorNode({ data, windowId }: { data?: any; windowId: string }
       }
     }
 
-    const root = containerRef.current.querySelector('.overtype-root') as HTMLElement | null;
-    if (root) {
-      root.style.height = '100%';
-    }
-
     return () => {
       try { editorRef.current?.destroy?.(); } catch {}
       editorRef.current = null;
     };
-  }, [editorValue, handleChange, readOnly]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!editorRef.current || typeof editorRef.current.getValue !== 'function') return;
@@ -579,13 +586,16 @@ function MarkdownEditorNode({ data, windowId }: { data?: any; windowId: string }
   return (
     <div className={wrapperClass} style={wrapperStyle}>
       {showPlaceholder && (
-        <div className="pointer-events-none absolute inset-3 text-[rgba(32,23,17,0.45)] text-sm select-none">
+        <div
+          className="pointer-events-none absolute text-[rgba(32,23,17,0.45)] text-sm select-none"
+          style={{ left: 16, right: 16, top: 16 }}
+        >
           {placeholder}
         </div>
       )}
       <div
         ref={containerRef}
-        className="h-full overflow-y-auto px-3 py-2 text-sm text-[var(--title-fg)]"
+        className="h-full overflow-y-auto text-sm text-[var(--title-fg)]"
       />
     </div>
   );
