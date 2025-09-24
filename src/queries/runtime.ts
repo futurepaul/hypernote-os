@@ -96,12 +96,14 @@ class QueryRuntime {
       }
 
       if (session) {
-        if (session.docFingerprint !== docFingerprint) {
+        const docChanged = session.docFingerprint !== docFingerprint
+        const contextChanged = session.contextFingerprint !== contextFingerprint
+        if (docChanged || contextChanged) {
           session.docFingerprint = docFingerprint
           session.docSubject.next(resolvedDoc)
           if (debugEnabled) console.debug(`${debugPrefix} doc update`, { queryKeys: Object.keys(resolvedDoc).filter(k => k.startsWith('$')).map(k => k.slice(1)) })
         }
-        if (session.contextFingerprint !== contextFingerprint) {
+        if (contextChanged) {
           session.contextFingerprint = contextFingerprint
           session.contextSubject.next(context)
           if (debugEnabled) console.debug(`${debugPrefix} context update`, { keys: Object.keys(context || {}) })
