@@ -8,7 +8,6 @@ import { docStateAtom } from '../state/docStateAtoms'
 import { queryRuntime } from '../queries/runtime'
 import { docActionsAtom, buildDocActionMap } from '../state/actions'
 import { RenderNodes } from './nodes'
-import { parseReference, resolveReference, type ReferenceScope } from '../interp/reference'
 import { installedAppsAtom, windowIntentAtom } from '../state/systemAtoms'
 import { hypersauceClientAtom } from '../state/hypersauce'
 
@@ -67,30 +66,8 @@ export function AppView({ id }: { id: string }) {
       system: systemGlobals,
     };
   }, [globalsUser, timeNow, forms, docState, systemGlobals]);
-  const formDefaultsRef = useRef<Record<string, any>>({})
-  const stateDefaultsRef = useRef<Record<string, any>>({})
-  const stateReady = useMemo(() => {
-    const defs = compiled?.meta?.state;
-    if (!defs || typeof defs !== 'object') return true;
-    if (!docState) return false;
-    return Object.entries(defs).every(([key, raw]) => {
-      const current = docState[key];
-      if (current === undefined || current === null) return false;
-      if (typeof raw === 'string' && current === raw) return false;
-      return true;
-    });
-  }, [compiled?.meta?.state, docState]);
-  const formsReady = useMemo(() => {
-    const defs = compiled?.meta?.forms;
-    if (!defs || typeof defs !== 'object') return true;
-    if (!forms) return false;
-    return Object.entries(defs).every(([key, raw]) => {
-      const current = forms[key];
-      if (current === undefined || current === null) return false;
-      if (typeof raw === 'string' && current === raw) return false;
-      return true;
-    });
-  }, [compiled?.meta?.forms, forms]);
+  const formsReady = true
+  const stateReady = true
 
   const renderCount = useRef(0);
   const debug = useAtomValue(debugAtom)
@@ -118,66 +95,25 @@ export function AppView({ id }: { id: string }) {
     if (!compiled || compileError) return;
     const defaults = compiled.meta?.forms;
     if (!defaults || typeof defaults !== 'object') return;
-    const scope: ReferenceScope = {
-      globals: { user: globalsUser, time: { now: timeNow }, system: systemGlobals },
-      queries: {},
-    };
     setForms(prev => {
       const prevObj = prev || {};
-      let changed = false;
-      const next = { ...prevObj };
-      const defaultsCache = formDefaultsRef.current;
-      for (const [key, raw] of Object.entries(defaults)) {
-        const resolved = resolveMetaValue(raw, scope);
-        if (resolved === undefined) continue;
-        const current = next[key];
-        const lastResolved = defaultsCache[key];
-        const shouldOverwrite =
-          current === undefined ||
-          current === '' ||
-          current === raw ||
-          (lastResolved !== undefined && current === lastResolved);
-        defaultsCache[key] = resolved;
-        if (shouldOverwrite && current !== resolved) {
-          next[key] = resolved;
-          changed = true;
-        }
-      }
-      return changed ? next : prevObj;
+      const missing = Object.keys(defaults).some(key => prevObj[key] === undefined || prevObj[key] === '');
+      if (!missing) return prev ?? prevObj;
+      return { ...defaults, ...prevObj };
     });
-  }, [compiled, compileError, setForms, globalsUser, timeNow, systemGlobals]);
+  }, [compiled, compileError, setForms]);
 
   useEffect(() => {
     if (!compiled || compileError) return;
     const defaults = compiled.meta?.state;
     if (!defaults || typeof defaults !== 'object') return;
-    const scope: ReferenceScope = {
-      globals: { user: globalsUser, time: { now: timeNow }, system: systemGlobals },
-      queries: {},
-    };
     setDocState(prev => {
       const prevObj = prev || {};
-      let changed = false;
-      const next = { ...prevObj };
-      const defaultsCache = stateDefaultsRef.current;
-      for (const [key, raw] of Object.entries(defaults)) {
-        const resolved = resolveMetaValue(raw, scope);
-        if (resolved === undefined) continue;
-        const current = next[key];
-        const lastResolved = defaultsCache[key];
-        const shouldOverwrite =
-          current === undefined ||
-          current === raw ||
-          (lastResolved !== undefined && current === lastResolved);
-        defaultsCache[key] = resolved;
-        if (shouldOverwrite && current !== resolved) {
-          next[key] = resolved;
-          changed = true;
-        }
-      }
-      return changed ? next : prevObj;
+      const missing = Object.keys(defaults).some(key => prevObj[key] === undefined);
+      if (!missing) return prev ?? prevObj;
+      return { ...defaults, ...prevObj };
     });
-  }, [compiled, compileError, setDocState, globalsUser, timeNow, systemGlobals]);
+  }, [compiled, compileError, setDocState]);
 
   const relays = useAtomValue(relaysAtom)
   useEffect(() => {
@@ -275,27 +211,6 @@ function useQuerySnapshotState(
   }, [streams, windowId, debug])
 
   return state
-}
-
-function resolveMetaValue(value: any, scope: ReferenceScope): any {
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (trimmed) {
-      const ref = parseReference(trimmed);
-      if (ref) {
-        const resolved = resolveReference(trimmed, scope);
-        return resolved !== undefined ? resolved : undefined;
-      }
-    }
-    return value;
-  }
-  if (Array.isArray(value)) return value.map(item => resolveMetaValue(item, scope));
-  if (value && typeof value === 'object') {
-    const out: Record<string, any> = {};
-    for (const [key, val] of Object.entries(value)) out[key] = resolveMetaValue(val, scope);
-    return out;
-  }
-  return value;
 }
 
 export function parseFrontmatterName(doc: string): string | undefined {
