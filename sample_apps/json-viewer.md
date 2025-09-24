@@ -19,5 +19,4 @@ text: Paste JSON here...
 ```json.viewer
 label: Parsed Input
 source: form.payload
-maxDepth: 6
 ```

@@ -1,7 +1,7 @@
 ---
 hypernote:
-  name: Feed
   icon: fax.png
+  name: Feed
 queries:
   contact_list:
     authors:
@@ -16,6 +16,14 @@ queries:
           index: 0
           eq: p
       - pluckIndex: 1
+  feed_enriched:
+    from: queries.following_feed
+    pipe:
+      - enrich:
+          with: queries.profile
+          args:
+            pubkey: $item.pubkey
+          label: profile
   following_feed:
     authors: queries.contact_list
     kinds:
@@ -36,15 +44,13 @@ queries:
       kinds:
         - 0
       limit: 1
-  feed_enriched:
-    from: queries.following_feed
-    pipe:
-      - enrich:
-          with: queries.profile
-          args:
-            pubkey: $item.pubkey
-          label: profile
+dependencies:
+  globals:
+    - feed
+  queries:
+    - feed_enriched
 ---
+
 
 ```each.start
 from: queries.feed_enriched
@@ -59,7 +65,7 @@ width: 420px
 ```vstack.start
 width: 352px
 ```
-[{{ feed[1].display_name || feed[1].name || feed[0].pubkey }}](nostr:{{ feed[0].npub || feed[0].pubkey }}) - {{ feed[0].created_at | format_date:datetime }}
+__[{{ feed[1].display_name || feed[1].name || feed[0].pubkey }}](nostr:{{ feed[0].npub || feed[0].pubkey }})__ - _{{ feed[0].created_at | format_date:datetime }}_
 
 ```note
 event: feed[0]
