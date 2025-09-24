@@ -26,9 +26,11 @@ test('queryRuntime exposes composeDocQueries streams', async () => {
   const client = {
     composeDocQueries(doc: any, _context: any, opts?: any) {
       composeCalls += 1
-      docSubject = doc as BehaviorSubject<any>
-      contextSubject = _context as BehaviorSubject<any>
-      capturedDoc = docSubject.getValue()
+      const docStream = doc as BehaviorSubject<any>
+      const contextStream = _context as BehaviorSubject<any>
+      docSubject = docStream
+      contextSubject = contextStream
+      capturedDoc = docStream.getValue()
       capturedDebug = opts
       return new Map([
         [
@@ -62,8 +64,11 @@ test('queryRuntime exposes composeDocQueries streams', async () => {
   const streams = store.get(windowQueryStreamsAtom(windowId))
   expect(Object.keys(streams)).toEqual(['feed'])
 
+  const feedStream = streams.feed
+  expect(feedStream).toBeDefined()
+
   const results: any[] = []
-  const subscription = streams.feed.subscribe((value: any) => {
+  const subscription = feedStream!.subscribe((value: any) => {
     results.push(value)
   })
   subscription.unsubscribe()
@@ -77,7 +82,12 @@ test('queryRuntime exposes composeDocQueries streams', async () => {
   })
 
   expect(composeCalls).toBe(1)
-  expect(contextSubject?.getValue()).toEqual({ user: { pubkey: 'abc' }, form: { topic: 'nostr' } })
+  expect(contextSubject).toBeInstanceOf(BehaviorSubject)
+  if (!contextSubject) {
+    throw new Error('contextSubject missing')
+  }
+  const contextStream = contextSubject as BehaviorSubject<any>
+  expect(contextStream.getValue()).toEqual({ user: { pubkey: 'abc' }, form: { topic: 'nostr' } })
 
   queryRuntime.stop(windowId)
   expect(store.get(windowQueryStreamsAtom(windowId))).toEqual({})

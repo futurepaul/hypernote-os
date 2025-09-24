@@ -1,0 +1,5 @@
+{
+  "entry": ["src/frontend.tsx"],
+  "project": ["src/**/*.{js,jsx,ts,tsx}", "!src/**/*.test.{js,jsx,ts,tsx}"],
+  "typescript": true
+}

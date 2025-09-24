@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "bun --hot src/index.tsx",
     "start": "NODE_ENV=production bun src/index.tsx",
-    "build": "bun run build.ts"
+    "build": "bun run build.ts",
+    "knip": "knip"
   },
   "dependencies": {
     "bun-plugin-tailwind": "^0.0.15",
@@ -16,14 +17,18 @@
     "overtype": "^1.2.6",
     "react": "^19",
     "react-dom": "^19",
+    "rxjs": "^7.8.2",
     "tailwindcss": "^4.1.11",
     "very-small-parser": "^1.14.0",
     "yaml": "^2.8.1",
     "zod": "^4.1.11"
   },
   "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^24.5.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@types/bun": "latest"
+    "knip": "^5.64.0",
+    "typescript": "^5.9.2"
   }
 }

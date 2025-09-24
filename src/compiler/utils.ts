@@ -99,10 +99,13 @@ export function ensureBlankLineBeforeFences(source: string): string {
   const lines = source.split(/\r?\n/);
   const out: string[] = [];
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+    const line = lines[i] ?? '';
     const isFence = line.trimStart().startsWith('```');
-    if (isFence && out.length > 0 && out[out.length - 1].trim() !== '') {
-      out.push('');
+    if (isFence && out.length > 0) {
+      const prev = out[out.length - 1] ?? '';
+      if (prev.trim() !== '') {
+        out.push('');
+      }
     }
     out.push(line);
   }

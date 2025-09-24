@@ -26,7 +26,8 @@ describe("publish/install roundtrip", () => {
     return;
   }
 
-  const pubkey = pkHexEnv || getPublicKey(hexToBytes(skHex));
+  const secretKeyBytes = hexToBytes(skHex);
+  const pubkey = pkHexEnv || getPublicKey(secretKeyBytes);
 
   test("publishApp → installByNaddr returns matching doc", async () => {
     const store = getDefaultStore();
@@ -42,7 +43,7 @@ describe("publish/install roundtrip", () => {
       },
       async signEvent(unsigned: any) {
         const { kind, content, tags, created_at } = unsigned;
-        const event = finalizeEvent({ kind, content, tags, created_at }, skHex);
+        const event = finalizeEvent({ kind, content, tags, created_at }, secretKeyBytes);
         return event;
       },
     };

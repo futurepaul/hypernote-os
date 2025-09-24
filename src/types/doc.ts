@@ -1,6 +1,11 @@
-import { z } from "zod";
+import { z, type ZodType } from "zod";
 
 const unknownRecord = z.record(z.string(), z.unknown());
+
+export type NodeDeps = {
+  queries?: string[];
+  globals?: string[];
+};
 
 export const NodeDepsSchema = z
   .object({
@@ -9,86 +14,32 @@ export const NodeDepsSchema = z
   })
   .optional();
 
-const BaseNodeSchema = z.object({
-  id: z.string(),
-  type: z.union([
-    z.literal("markdown"),
-    z.literal("button"),
-    z.literal("input"),
-    z.literal("hstack"),
-    z.literal("vstack"),
-    z.literal("each"),
-    z.literal("markdown_editor"),
-    z.literal("literal_code"),
-    z.literal("markdown_viewer"),
-    z.literal("note"),
-    z.literal("json_viewer"),
-  ]),
-  deps: NodeDepsSchema,
-});
+export type UiNode = {
+  id: string;
+  type: string;
+  deps?: NodeDeps;
+  data?: Record<string, unknown>;
+  text?: string;
+  markdown?: unknown;
+  refs?: string[];
+  children?: UiNode[];
+  [key: string]: unknown;
+};
 
-const MarkdownNodeSchema = BaseNodeSchema.extend({
-  type: z.literal("markdown"),
-  markdown: z.unknown().optional(),
-  text: z.string().optional(),
-  refs: z.array(z.string()).optional(),
-});
-
-const ActionableNodeSchema = BaseNodeSchema.extend({
-  type: z.union([z.literal("button"), z.literal("input"), z.literal("markdown_editor")]),
-  data: unknownRecord.optional(),
-});
-
-const LiteralCodeNodeSchema = BaseNodeSchema.extend({
-  type: z.literal("literal_code"),
-  text: z.string().optional(),
-  data: unknownRecord.optional(),
-});
-
-const MarkdownViewerNodeSchema = BaseNodeSchema.extend({
-  type: z.literal("markdown_viewer"),
-  data: unknownRecord.optional(),
-});
-
-const NoteNodeSchema = BaseNodeSchema.extend({
-  type: z.literal("note"),
-  data: unknownRecord.optional(),
-});
-
-const JsonViewerNodeSchema = BaseNodeSchema.extend({
-  type: z.literal("json_viewer"),
-  data: unknownRecord.optional(),
-});
-
-const StackNodeSchema = BaseNodeSchema.extend({
-  type: z.union([z.literal("hstack"), z.literal("vstack")]),
-  data: unknownRecord.optional(),
-  children: z.lazy(() => UiNodeSchema.array()).default([]),
-});
-
-const EachNodeSchema = BaseNodeSchema.extend({
-  type: z.literal("each"),
-  data: z
+export const UiNodeSchema: ZodType<UiNode> = z.lazy(() =>
+  z
     .object({
-      source: z.string(),
-      as: z.string(),
+      id: z.string(),
+      type: z.string(),
+      deps: NodeDepsSchema,
+      data: z.record(z.string(), z.unknown()).optional(),
+      text: z.string().optional(),
+      markdown: z.unknown().optional(),
+      refs: z.array(z.string()).optional(),
+      children: z.array(z.lazy(() => UiNodeSchema)).optional(),
     })
-    .passthrough(),
-  children: z.lazy(() => UiNodeSchema.array()).default([]),
-});
-
-export const UiNodeSchema = z.union([
-  MarkdownNodeSchema,
-  ActionableNodeSchema,
-  StackNodeSchema,
-  EachNodeSchema,
-  LiteralCodeNodeSchema,
-  MarkdownViewerNodeSchema,
-  NoteNodeSchema,
-  JsonViewerNodeSchema,
-]);
-
-export type UiNode = z.infer<typeof UiNodeSchema>;
+    .catchall(z.unknown()),
+);
 
 const HypernoteSectionSchema = z
   .object({

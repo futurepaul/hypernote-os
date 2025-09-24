@@ -23,14 +23,17 @@
 
     "baseUrl": ".",
     "paths": {
+      "overtype": ["./node_modules/overtype/dist/overtype.d.ts"],
       "@/*": ["./src/*"]
     },
 
     // Some stricter flags (disabled by default)
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "noPropertyAccessFromIndexSignature": false
+    "noPropertyAccessFromIndexSignature": false,
+    "typeRoots": ["./types", "./node_modules/@types"]
   },
 
-  "exclude": ["dist", "node_modules"]
+  "exclude": ["dist", "node_modules", "../hypersauce", "../hypersauce/**/*"],
+  "include": ["src/**/*", "sample_apps/**/*", "*.d.ts"]
 }

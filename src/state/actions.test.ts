@@ -1,3 +1,4 @@
+import { describe, it, expect } from 'bun:test'
 import { buildDocActionMap } from './actions'
 
 describe('buildDocActionMap', () => {
@@ -15,12 +16,14 @@ describe('buildDocActionMap', () => {
       },
     })
 
-    expect(actions.set_profile.template).toMatchObject({
+    const setProfile = actions.set_profile
+    expect(setProfile).toBeDefined()
+    expect(setProfile!.template).toMatchObject({
       kind: 1,
       content: '{{ form.editor }}',
     })
-    expect(actions.set_profile.formUpdates).toMatchObject({ editor: '' })
-    expect(actions.set_profile.stateUpdates).toMatchObject({ profile_target: 'payload.pubkey' })
+    expect(setProfile!.formUpdates).toMatchObject({ editor: '' })
+    expect(setProfile!.stateUpdates).toMatchObject({ profile_target: 'payload.pubkey' })
   })
 
   it('supports actions with only mutations', () => {
@@ -32,7 +35,9 @@ describe('buildDocActionMap', () => {
       },
     })
 
-    expect(actions.reset_input.template).toBeUndefined()
-    expect(actions.reset_input.formUpdates).toMatchObject({ pubkey: 'user.pubkey' })
+    const resetInput = actions.reset_input
+    expect(resetInput).toBeDefined()
+    expect(resetInput!.template).toBeUndefined()
+    expect(resetInput!.formUpdates).toMatchObject({ pubkey: 'user.pubkey' })
   })
 })

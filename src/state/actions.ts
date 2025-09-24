@@ -9,6 +9,7 @@ import { hypersauceClientAtom } from './hypersauce'
 import { installedAppsAtom, appHandlesAtom, windowIntentAtom, type SystemAppHandle } from './systemAtoms'
 import { queryEpochAtom } from './queriesAtoms'
 import { SimplePool, type Event, nip19, getPublicKey } from 'nostr-tools'
+import { PipeEngine, toPipeOps } from 'hypersauce'
 import { interpolate as interpolateTemplate } from '../interp/interpolate'
 import { isDefaultDocId, loadUserDocs, saveUserDocs } from './docs'
 import { parseReference, resolveReference, type ReferenceScope } from '../interp/reference'
@@ -29,6 +30,8 @@ export type DocActionDefinition = {
   formUpdates?: Record<string, any>
   stateUpdates?: Record<string, any>
 }
+
+const actionPipeEngine = new PipeEngine()
 
 const emptyDocActionsAtom = atom<Record<string, DocActionDefinition>>({})
 export const docActionsAtom = atomFamily((id: string) => atom<Record<string, DocActionDefinition>>({}))
@@ -116,7 +119,9 @@ const systemActionHandlers: Record<string, SystemActionHandler> = {
   },
   switch_app: async ({ payload, scope, store }) => {
     const docs = store.get(docsAtom)
-    const { id: targetId, handle } = resolveSwitchTarget(payload, store, docs)
+    const resolution = resolveSwitchTarget(payload, store, docs)
+    const targetId = resolution?.id
+    const handle = resolution?.handle ?? null
     if (!targetId) {
       console.warn('@switch_app: unable to resolve target for payload', payload)
       return
@@ -531,12 +536,23 @@ function extractPubkey(raw: unknown): string | null {
     }
     if (decoded.type === 'nsec') {
       const data = decoded.data as Uint8Array | string
-      const secret = typeof data === 'string' ? data : bytesToHex(data)
-      const pubkey = getPublicKey(secret)
-      return typeof pubkey === 'string' ? pubkey.toLowerCase() : bytesToHex(pubkey as unknown as Uint8Array).toLowerCase()
+      const secretBytes = typeof data === 'string' ? hexToBytes(data) : data
+      const pubkey = getPublicKey(secretBytes)
+      return pubkey.toLowerCase()
     }
   } catch {}
   return null
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  const clean = hex.startsWith('0x') ? hex.slice(2) : hex
+  if (clean.length % 2 !== 0) throw new Error('Invalid hex string length')
+  const out = new Uint8Array(clean.length / 2)
+  for (let i = 0; i < out.length; i += 1) {
+    const byte = clean.slice(i * 2, i * 2 + 2)
+    out[i] = parseInt(byte, 16)
+  }
+  return out
 }
 
 function bytesToHex(data: Uint8Array): string {

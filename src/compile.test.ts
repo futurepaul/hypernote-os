@@ -1,7 +1,7 @@
 import { expect, test, describe } from "bun:test";
 import { compileMarkdownDoc, DOC_VERSION } from "./compiler";
 import { decompile } from "./decompiler";
-import { validateDoc } from "./types/doc";
+import { validateDoc, type UiNode } from "./types/doc";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 
@@ -21,15 +21,18 @@ describe("compiler", () => {
     expect(Array.isArray(ast)).toBe(true);
 
     // Expect first markdown node to include the price text
-    const markdownNode = ast.find(n => n.type === "markdown");
+    const markdownNode = ast.find((node): node is UiNode => node.type === "markdown");
     expect(markdownNode).toBeTruthy();
     expect(markdownNode!.text || "").toContain("$60");
 
     // Expect an hstack with two button children
-    const row = ast.find(n => n.type === "hstack");
+    const row = ast.find((node): node is UiNode => node.type === "hstack");
     expect(row).toBeTruthy();
-    expect((row!.children || []).length).toBeGreaterThanOrEqual(2);
-    const labels = (row!.children || []).filter(n => n.type === "button").map(b => b.data?.text);
+    const rowChildren = (row?.children ?? []) as UiNode[];
+    expect(rowChildren.length).toBeGreaterThanOrEqual(2);
+    const labels = rowChildren
+      .filter((child): child is UiNode & { data?: { text?: string } } => child.type === "button")
+      .map((button) => button.data?.text);
     expect(labels).toContain("Send");
     expect(labels).toContain("Receive");
   });
@@ -125,7 +128,8 @@ describe("compiler", () => {
     const compiled = compileMarkdownDoc(md);
     const markdownNode = compiled.ast.find(n => n.type === "markdown");
     expect(markdownNode).toBeTruthy();
-    const paragraph = (markdownNode as any)?.markdown?.find((child: any) => child.type === "paragraph");
+    const markdownAst = Array.isArray((markdownNode as any)?.markdown) ? (markdownNode as any).markdown : [];
+    const paragraph = markdownAst.find((child: any) => child.type === "paragraph");
     expect(paragraph).toBeTruthy();
     const emphasisNodes = collectNodesOfType(paragraph, 'emphasis');
     expect(emphasisNodes.length).toBe(0);
@@ -133,8 +137,9 @@ describe("compiler", () => {
     expect(textContent.trim()).toBe('{{ $feed.1.display_name }} - {{ $feed.0.created_at }}');
 
     const roundtripped = compileMarkdownDoc(decompile(compiled));
-    const rtParagraph = roundtripped.ast
-      .find(n => n.type === "markdown")?.markdown?.find((child: any) => child.type === "paragraph");
+    const rtMarkdownNode = roundtripped.ast.find(n => n.type === "markdown");
+    const rtMarkdownAst = Array.isArray((rtMarkdownNode as any)?.markdown) ? (rtMarkdownNode as any).markdown : [];
+    const rtParagraph = rtMarkdownAst.find((child: any) => child.type === "paragraph");
     const rtText = collectNodesOfType(rtParagraph, 'text').map(n => n.value).join('');
     expect(rtText.trim()).toBe('{{ $feed.1.display_name }} - {{ $feed.0.created_at }}');
   });
@@ -142,14 +147,16 @@ describe("compiler", () => {
   test("mustache variables inside image urls are preserved", () => {
     const md = `---\nname: Img\n---\n\n![avatar]({{ $feed.1.picture }}?w=48)`;
     const compiled = compileMarkdownDoc(md);
-    const imageNode = compiled.ast
-      .find(n => n.type === "markdown")?.markdown?.[0]?.children?.find((child: any) => child.type === 'image');
+    const compiledMarkdown = compiled.ast.find(n => n.type === "markdown");
+    const compiledMarkdownAst = Array.isArray((compiledMarkdown as any)?.markdown) ? (compiledMarkdown as any).markdown : [];
+    const imageNode = compiledMarkdownAst[0]?.children?.find((child: any) => child.type === 'image');
     expect(imageNode).toBeTruthy();
     expect(imageNode?.url).toBe('{{ $feed.1.picture }}?w=48');
 
     const roundtripped = compileMarkdownDoc(decompile(compiled));
-    const rtImageNode = roundtripped.ast
-      .find(n => n.type === "markdown")?.markdown?.[0]?.children?.find((child: any) => child.type === 'image');
+    const rtMarkdown = roundtripped.ast.find(n => n.type === "markdown");
+    const rtMarkdownBlocks = Array.isArray((rtMarkdown as any)?.markdown) ? (rtMarkdown as any).markdown : [];
+    const rtImageNode = rtMarkdownBlocks[0]?.children?.find((child: any) => child.type === 'image');
     expect(rtImageNode?.url).toBe('{{ $feed.1.picture }}?w=48');
   });
 
@@ -222,7 +229,8 @@ describe("compiler", () => {
     const md = `---\nname: Button\n---\n\n\`\`\`button\ntext: Install\naction: "@install_app"\npayload:\n  naddr: "{{ $app.0.naddr }}"\n\`\`\`\n`;
     const compiled = compileMarkdownDoc(md);
     const button = compiled.ast.find(n => n.type === "button");
-    expect(button?.data?.payload?.naddr).toBe('{{ $app.0.naddr }}');
+    const buttonPayload = (button as any)?.data?.payload as Record<string, unknown> | undefined;
+    expect(buttonPayload?.naddr).toBe('{{ $app.0.naddr }}');
     const decompiled = decompile(compiled);
     expect(decompiled).toContain('{{ $app.0.naddr }}');
   });

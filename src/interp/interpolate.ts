@@ -48,14 +48,17 @@ function resolveBareExpression(expr: string, scope: { globals: any; queries: Rec
 function parseMoustachePipeline(expr: string): { head: string; pipes: string[] } {
   const parts = expr.split('|').map(part => part.trim()).filter(Boolean)
   if (parts.length <= 1) return { head: expr, pipes: [] }
-  const [head, ...rest] = parts
+  const head = parts[0] ?? expr
+  const rest = parts.slice(1)
   return { head, pipes: rest }
 }
 
 function applyLocalPipes(value: unknown, pipes: string[]): unknown {
   return pipes.reduce((acc, segment) => {
     if (acc == null) return acc
-    const [name, rawArg] = segment.split(':', 2).map((s) => s.trim())
+    const [rawName, rawArgPart] = segment.split(':', 2)
+    const name = rawName?.trim() ?? ''
+    const rawArg = rawArgPart?.trim()
     switch (name) {
       case 'format_date':
         return formatDateHelper(acc, parseSimpleArg(rawArg))

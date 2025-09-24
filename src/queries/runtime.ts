@@ -127,8 +127,8 @@ class QueryRuntime {
         contextSubject,
         debugEnabled
           ? {
-              onDebug(debugMap) {
-                const entries = Array.from(debugMap.entries()).map(([key, info]) => ({ key, ...info }))
+              onDebug(debugMap: Map<string, unknown>) {
+                const entries = Array.from(debugMap.entries()).map(([key, info]) => ({ key, info }))
                 console.debug(`${debugPrefix} composeDocQueries`, entries)
               },
             }

@@ -24,24 +24,24 @@ type NodeBoundaryState = {
 };
 
 class NodeBoundary extends Component<NodeBoundaryProps, NodeBoundaryState> {
-  state: NodeBoundaryState = { error: null };
+  override state: NodeBoundaryState = { error: null };
 
   static getDerivedStateFromError(error: Error): NodeBoundaryState {
     return { error };
   }
 
-  componentDidCatch(error: Error, info: ErrorInfo) {
+  override componentDidCatch(error: Error, info: ErrorInfo): void {
     const { node, windowId } = this.props;
     console.warn('[RenderNodes] node error', { windowId, nodeType: node.type, nodeId: node.id, info: info?.componentStack }, error);
   }
 
-  componentDidUpdate(prevProps: NodeBoundaryProps) {
+  override componentDidUpdate(prevProps: Readonly<NodeBoundaryProps>): void {
     if (this.state.error && (prevProps.node !== this.props.node || prevProps.node.id !== this.props.node.id)) {
       this.setState({ error: null });
     }
   }
 
-  render(): ReactNode {
+  override render(): ReactNode {
     if (this.state.error) {
       const { node } = this.props;
       return (
@@ -72,8 +72,9 @@ function interpolateText(text: string, globals: any, queries: Record<string, any
 
 function MarkdownNode({ n, globals, queries, windowId }: { n: Node; globals: any; queries: Record<string, any>; windowId: string }) {
   const deps = useMemo(() => {
-    const refs = Array.isArray(n.refs) ? n.refs : [];
-    return refs.map(ref => JSON.stringify(resolveReference(ref, { globals, queries }) ?? ''));
+    const rawRefs = Array.isArray(n.refs) ? (n.refs as unknown[]) : [];
+    const refs = rawRefs.filter((ref): ref is string => typeof ref === 'string');
+    return refs.map((ref) => JSON.stringify(resolveReference(ref, { globals, queries }) ?? ''));
   }, [n.refs, queries, globals]);
 
   const scope = useMemo<MarkdownScope>(() => ({ globals, queries }), [globals, queries]);
@@ -232,16 +233,18 @@ function NoteNode({ data, globals, queries, windowId }: { data?: any; globals: a
       <p key={`p-${idx}`} className="whitespace-pre-wrap break-words leading-relaxed text-[15px]">
         {line.map((token, tokenIdx) => {
           if (token.type === 'link' && token.href) {
-            const isNostr = token.href.startsWith('nostr:');
+            const { href } = token;
+            if (!href) return <span key={`text-${idx}-${tokenIdx}`}>{token.value}</span>;
+            const isNostr = href.startsWith('nostr:');
             const onClick = isNostr && switchApp ? (event: MouseEvent<HTMLAnchorElement>) => {
               event.preventDefault();
-              const payload = buildSwitchPayloadFromNostrUri(token.href);
+              const payload = buildSwitchPayloadFromNostrUri(href);
               if (payload) switchApp(payload, { windowId, globals, queries }).catch(err => console.warn('nostr link action failed', err));
             } : undefined;
             return (
               <a
                 key={`link-${idx}-${tokenIdx}`}
-                href={token.href}
+                href={href}
                 target={isNostr ? undefined : '_blank'}
                 rel={isNostr ? undefined : 'noreferrer'}
                 onClick={onClick}
@@ -746,7 +749,7 @@ function buildSwitchPayloadFromNostrUri(href: string): Record<string, any> | nul
         return payload;
       }
       case 'nprofile': {
-        const data = decoded.data as { pubkey?: string };
+        const data = decoded.data as { pubkey?: string; relays?: string[] };
         const pubkey = typeof data.pubkey === 'string' ? data.pubkey : null;
         if (!pubkey) return null;
         const payload = { kind: 0, pubkey, value: trimmed, uri: trimmed, relays: Array.isArray(data.relays) ? data.relays : undefined };
@@ -811,15 +814,19 @@ export function RenderNodes({ nodes, globals, windowId, queries, errors, inline 
       return <MarkdownNode n={n} globals={globals} queries={queries} windowId={windowId} />;
     }
     if (n.type === "button") {
+      const buttonData = (n.data ?? {}) as Record<string, unknown>;
+      const buttonText = typeof buttonData.text === 'string' ? buttonData.text : '';
+      const buttonAction = typeof buttonData.action === 'string' ? buttonData.action : undefined;
+      const buttonPayload = buttonData.payload;
       return (
         <ButtonNode
-          text={n.data?.text || ""}
-          action={n.data?.action}
+          text={buttonText}
+          action={buttonAction}
           globals={globals}
           windowId={windowId}
           queries={queries}
-          payloadSpec={n.data?.payload}
-          data={n.data}
+          payloadSpec={buttonPayload}
+          data={buttonData}
         />
       );
     }
@@ -841,10 +848,13 @@ export function RenderNodes({ nodes, globals, windowId, queries, errors, inline 
       );
     }
     if (n.type === "input") {
+      const inputData = (n.data ?? {}) as Record<string, unknown>;
+      const inputText = typeof inputData.text === 'string' ? inputData.text : '';
+      const inputName = typeof inputData.name === 'string' ? inputData.name : undefined;
       return (
         <InputNode
-          text={n.data?.text || ""}
-          name={n.data?.name}
+          text={inputText}
+          name={inputName}
           globals={globals}
           windowId={windowId}
           queries={queries}
@@ -853,15 +863,16 @@ export function RenderNodes({ nodes, globals, windowId, queries, errors, inline 
     }
     if (n.type === "hstack" || n.type === "vstack") {
       const style = stackStyleFromData(n.data);
+      const childNodes: Node[] = Array.isArray(n.children) ? (n.children as Node[]) : [];
       return (
         <div
           className={n.type === "hstack" ? "flex flex-row gap-2" : "flex flex-col gap-2"}
           style={style}
         >
-          {(n.children || []).map((c, j) => (
+          {childNodes.map((child, childIndex) => (
             <RenderNodes
-              key={`${c.id || j}`}
-              nodes={[c]}
+              key={`${child.id ?? childIndex}`}
+              nodes={[child]}
               globals={globals}
               windowId={windowId}
               queries={queries}

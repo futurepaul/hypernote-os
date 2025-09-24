@@ -10,8 +10,8 @@ export type ReferenceScope = {
   globals?: any;
 };
 
-export function parseReference(raw: string): Reference | null {
-  const text = (raw || '').trim();
+export function parseReference(raw: string | null | undefined): Reference | null {
+  const text = (raw ?? '').trim();
   if (!text) return null;
   let index = 0;
 
@@ -22,7 +22,7 @@ export function parseReference(raw: string): Reference | null {
   const readIdentifier = (): string | null => {
     let start = index;
     while (index < text.length) {
-      const ch = text[index];
+      const ch = text[index] ?? '';
       if (ch === '.' || ch === '[') break;
       if (!isIdentifierChar(ch, index === start)) return null;
       index += 1;
@@ -37,7 +37,7 @@ export function parseReference(raw: string): Reference | null {
     let depth = 1;
     let start = index;
     while (index < text.length && depth > 0) {
-      const ch = text[index];
+      const ch = text[index] ?? '';
       if (ch === '[') depth += 1;
       else if (ch === ']') depth -= 1;
       if (depth === 0) break;
@@ -79,7 +79,7 @@ export function parseReference(raw: string): Reference | null {
   return { root, segments };
 }
 
-export function resolveReference(raw: string, scope: ReferenceScope): unknown {
+export function resolveReference(raw: string | null | undefined, scope: ReferenceScope): unknown {
   const parsed = parseReference(raw);
   if (!parsed) return undefined;
   const ctx = resolveRoot(parsed.root, scope);
@@ -98,19 +98,19 @@ export function resolveReference(raw: string, scope: ReferenceScope): unknown {
   return current;
 }
 
-export function referenceRoot(raw: string): string | null {
+export function referenceRoot(raw: string | null | undefined): string | null {
   const parsed = parseReference(raw);
   return parsed ? parsed.root : null;
 }
 
-export function referenceQueryId(raw: string): string | null {
+export function referenceQueryId(raw: string | null | undefined): string | null {
   const parsed = parseReference(raw);
   if (!parsed || parsed.root !== 'queries') return null;
   const first = parsed.segments[0];
   return typeof first === 'string' ? first : null;
 }
 
-export function isReferenceExpression(raw: string): boolean {
+export function isReferenceExpression(raw: string | null | undefined): boolean {
   return parseReference(raw) !== null;
 }
 
