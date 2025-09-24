@@ -8,7 +8,6 @@ import { hypersauceClientAtom } from '../state/hypersauce'
 import { windowQueryStreamsAtom } from '../state/queriesAtoms'
 import { debugAtom } from '../state/appAtoms'
 import type { HypernoteMeta } from '../compiler'
-import { parseReference, resolveReference } from '../interp/reference'
 
 type StartArgs = {
   windowId: string
@@ -84,9 +83,8 @@ class QueryRuntime {
       const debugEnabled = !!store.get(debugAtom)
       const debugPrefix = debugEnabled ? `[Runtime:${windowId}]` : ''
       const docTemplate = buildDocTemplate(windowId, meta, queryEntries)
-      const resolvedDoc = resolveQueryDoc(docTemplate, context)
       const metaKey = JSON.stringify(docTemplate)
-      const docFingerprint = JSON.stringify(resolvedDoc)
+      const docFingerprint = JSON.stringify(docTemplate)
       const contextFingerprint = JSON.stringify(context || {})
 
       let session = this.sessions.get(windowId)
@@ -98,10 +96,10 @@ class QueryRuntime {
       if (session) {
         const docChanged = session.docFingerprint !== docFingerprint
         const contextChanged = session.contextFingerprint !== contextFingerprint
-        if (docChanged || contextChanged) {
+        if (docChanged) {
           session.docFingerprint = docFingerprint
-          session.docSubject.next(resolvedDoc)
-          if (debugEnabled) console.debug(`${debugPrefix} doc update`, { queryKeys: Object.keys(resolvedDoc).filter(k => k.startsWith('$')).map(k => k.slice(1)) })
+          session.docSubject.next(docTemplate)
+          if (debugEnabled) console.debug(`${debugPrefix} doc update`, { queryKeys: Object.keys(docTemplate).filter(k => k.startsWith('$')).map(k => k.slice(1)) })
         }
         if (contextChanged) {
           session.contextFingerprint = contextFingerprint
@@ -115,7 +113,7 @@ class QueryRuntime {
         console.debug(`${debugPrefix} start`, { relays, contextKeys: Object.keys(context || {}), queryKeys: queryEntries.map(([name]) => name) })
       }
 
-      const docSubject = new BehaviorSubject(resolvedDoc)
+      const docSubject = new BehaviorSubject(docTemplate)
       const contextSubject = new BehaviorSubject(context)
 
       const streamMap: Map<string, any> = this.client.composeDocQueries(
@@ -159,61 +157,9 @@ function buildDocTemplate(windowId: string, meta: HypernoteMeta | Record<string,
   const doc: any = { type: 'hypernote', name: String(windowId) }
   if (meta?.hypernote && typeof meta.hypernote === 'object') doc.hypernote = meta.hypernote
   for (const [name, def] of queryEntries) {
-    doc[`$${name}`] = normalizeQueryDefinition(def)
+    doc[`$${name}`] = def
   }
   return doc
-}
-
-function resolveQueryDoc(doc: any, context: any): any {
-  return deepResolve(doc, context)
-}
-
-function deepResolve(value: any, context: any): any {
-  if (Array.isArray(value)) return value.map(item => deepResolve(item, context))
-  if (value && typeof value === 'object') {
-    const out: Record<string, any> = {}
-    for (const [k, v] of Object.entries(value)) out[k] = deepResolve(v, context)
-    return out
-  }
-  if (typeof value === 'string') {
-    const trimmed = value.trim()
-    if (/^\$[A-Za-z0-9_.-]+$/.test(trimmed)) {
-      const resolved = getContextPath(trimmed.slice(1), context)
-      if (resolved !== undefined) return resolved
-    }
-    const ref = parseReference(trimmed)
-    if (ref) {
-      if (ref.root === 'queries') return trimmed
-      const resolved = resolveReference(trimmed, { globals: context })
-      if (resolved !== undefined) return resolved
-    }
-  }
-  return value
-}
-
-function getContextPath(path: string, context: any): any {
-  const parts = path.split('.').filter(Boolean)
-  let current: any = context
-  for (const part of parts) {
-    if (current == null || typeof current !== 'object') return undefined
-    current = current[part]
-  }
-  return current
-}
-
-function normalizeQueryDefinition(value: any): any {
-  if (Array.isArray(value)) return value.map(item => normalizeQueryDefinition(item))
-  if (value && typeof value === 'object') {
-    const out: Record<string, any> = {}
-    for (const [k, v] of Object.entries(value)) out[k] = normalizeQueryDefinition(v)
-    return out
-  }
-  if (typeof value === 'string') {
-    const trimmed = value.trim()
-    if (trimmed.startsWith('queries.')) return `$${trimmed.slice('queries.'.length)}`
-    return value
-  }
-  return value
 }
 
 function toRenderable(value: any): any {
