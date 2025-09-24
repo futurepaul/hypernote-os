@@ -587,7 +587,7 @@ function MarkdownEditorNode({ data, windowId }: { data?: any; windowId: string }
     <div className={wrapperClass} style={wrapperStyle}>
       {showPlaceholder && (
         <div
-          className="pointer-events-none absolute text-[rgba(32,23,17,0.45)] text-sm select-none"
+          className="pointer-events-none absolute text-[rgba(32,23,17,0.68)] text-sm select-none"
           style={{ left: 16, right: 16, top: 16 }}
         >
           {placeholder}
