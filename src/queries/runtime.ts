@@ -4,7 +4,7 @@
 import { getDefaultStore } from 'jotai'
 import { nip19 } from 'nostr-tools'
 import { hypersauceClientAtom } from '../state/hypersauce'
-import { windowQueryStreamsAtom, windowScalarsAtom } from '../state/queriesAtoms'
+import { windowQueryStreamsAtom } from '../state/queriesAtoms'
 import { debugAtom } from '../state/appAtoms'
 import type { HypernoteMeta } from '../compiler'
 import { parseReference, resolveReference } from '../interp/reference'
@@ -14,7 +14,6 @@ type StartArgs = {
   meta: HypernoteMeta | Record<string, any>
   relays: string[]
   context: any // { user: { pubkey } }
-  onScalars: (scalars: Record<string, any>) => void
 }
 
 class QueryRuntime {
@@ -51,10 +50,9 @@ class QueryRuntime {
   stop(windowId: string) {
     const store = getDefaultStore()
     try { store.set(windowQueryStreamsAtom(windowId), {}) } catch {}
-    try { store.set(windowScalarsAtom(windowId), {}) } catch {}
   }
 
-  async start({ windowId, meta, relays, context, onScalars }: StartArgs) {
+  async start({ windowId, meta, relays, context }: StartArgs) {
     try {
       this.stop(windowId)
       const queriesMeta = (meta && typeof meta.queries === 'object') ? (meta.queries as Record<string, any>) : {}
@@ -99,9 +97,6 @@ class QueryRuntime {
       const normalizedStreams = Object.fromEntries(entries)
       store.set(windowQueryStreamsAtom(windowId), normalizedStreams)
       if (debugEnabled) console.debug(`${debugPrefix} registered streams`, Object.keys(normalizedStreams))
-      // Maintain compatibility with legacy selectors that expected scalars
-      store.set(windowScalarsAtom(windowId), {})
-      onScalars(Object.fromEntries(entries.map(([name]) => [name, []])))
     } catch (e) {
       console.warn('[Hypersauce] start error', e)
     }

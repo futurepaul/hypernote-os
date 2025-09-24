@@ -194,7 +194,6 @@ export function AppView({ id }: { id: string }) {
       meta: compiled.meta,
       relays,
       context: ctx,
-      onScalars: () => {},
     }).catch(e => console.warn('[Hypersauce] start failed', e))
     return () => queryRuntime.stop(id)
   }, [id, compiled, compileError, globals.user?.pubkey, relays, docState, forms, launchIntent, hypersauceClient, queryEpoch, formsReady, stateReady])

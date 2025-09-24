@@ -18,7 +18,6 @@ test('queryRuntime exposes composeDocQueries streams', async () => {
 
   const payload = [{ foo: 'bar' }]
   let capturedDoc: any
-  let initialSeed: Record<string, any> | null = null
   let capturedDebug: any = null
   const client = {
     composeDocQueries(doc: any, _context: any, opts?: any) {
@@ -47,13 +46,10 @@ test('queryRuntime exposes composeDocQueries streams', async () => {
     meta,
     relays,
     context: { user: { pubkey: 'abc' } },
-    onScalars: (value) => { initialSeed = value },
   })
 
   expect(capturedDoc?.$feed).toEqual(meta.queries.feed)
   expect(typeof capturedDebug?.onDebug).toBe('function')
-  expect(initialSeed).toEqual({ feed: [] })
-
   const streams = store.get(windowQueryStreamsAtom(windowId))
   expect(Object.keys(streams)).toEqual(['feed'])
 
