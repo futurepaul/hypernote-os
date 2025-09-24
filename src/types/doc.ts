@@ -14,9 +14,29 @@ export const NodeDepsSchema = z
   })
   .optional();
 
+const NodeTypeValues = [
+  'markdown',
+  'button',
+  'input',
+  'markdown_editor',
+  'markdown_viewer',
+  'json_viewer',
+  'note',
+  'hstack',
+  'vstack',
+  'each',
+  'literal_code',
+  'grid',
+  'if',
+] as const;
+
+const NodeTypeSchema = z.enum(NodeTypeValues);
+
+export type NodeType = (typeof NodeTypeValues)[number];
+
 export type UiNode = {
   id: string;
-  type: string;
+  type: NodeType;
   deps?: NodeDeps;
   data?: Record<string, unknown>;
   text?: string;
@@ -30,7 +50,7 @@ export const UiNodeSchema: ZodType<UiNode> = z.lazy(() =>
   z
     .object({
       id: z.string(),
-      type: z.string(),
+      type: NodeTypeSchema,
       deps: NodeDepsSchema,
       data: z.record(z.string(), z.unknown()).optional(),
       text: z.string().optional(),

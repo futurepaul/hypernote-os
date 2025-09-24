@@ -23,7 +23,6 @@
 
     "baseUrl": ".",
     "paths": {
-      "overtype": ["./node_modules/overtype/dist/overtype.d.ts"],
       "@/*": ["./src/*"]
     },
 

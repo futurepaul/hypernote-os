@@ -10,7 +10,7 @@ import {
   restoreTemplateData,
   ensureBlankLineBeforeFences,
 } from "./compiler/utils";
-import { sanitizeStackConfig } from "./lib/layout";
+import { sanitizeStackConfig, normalizePixelValue } from "./lib/layout";
 import { isReferenceExpression, parseReference } from "./interp/reference";
 import type { DocIR, UiNode as SchemaUiNode } from "./types/doc";
 import { validateDoc } from "./types/doc";
@@ -118,6 +118,14 @@ function ensureDepsRecursive(nodes: UiNode[]): void {
     if (Array.isArray((node as any).children)) {
       ensureDepsRecursive((node.children as UiNode[]) || []);
     }
+    const truthyChildren = (node as any).truthy;
+    if (Array.isArray(truthyChildren)) {
+      ensureDepsRecursive(truthyChildren as UiNode[]);
+    }
+    const falsyChildren = (node as any).falsy;
+    if (Array.isArray(falsyChildren)) {
+      ensureDepsRecursive(falsyChildren as UiNode[]);
+    }
   }
 }
 
@@ -133,9 +141,15 @@ export function compileMarkdownDoc(md: string): CompiledDoc {
   let nextId = 1;
   const genId = () => String(nextId++);
 
-  type Frame = { node: UiNode; group: any[] };
+  type Frame = {
+    node: UiNode;
+    group: any[];
+    childTarget: UiNode[];
+    falsyTarget?: UiNode[];
+    slot?: 'truthy' | 'falsy';
+  };
   const root: UiNode = { id: genId(), type: "vstack", children: [] };
-  const stack: Frame[] = [{ node: root, group: [] }];
+  const stack: Frame[] = [{ node: root, group: [], childTarget: (root.children as UiNode[]) }];
 
 const flush = () => {
   const frame = stack[stack.length - 1]!;
@@ -149,14 +163,14 @@ const flush = () => {
     const deps = deriveDepsFromRefs(refs);
     const node: UiNode = { id: genId(), type: "markdown", markdown: restored, text, refs };
     if (deps) node.deps = deps;
-    (frame.node.children as UiNode[]).push(node);
+    frame.childTarget.push(node);
     frame.group = [];
   };
 
   const pushNode = (n: UiNode) => {
     const fr = stack[stack.length - 1];
     if (!fr) return;
-    (fr.node.children as UiNode[]).push(n);
+    fr.childTarget.push(n);
   };
 
   for (const t of tokens) {
@@ -245,7 +259,7 @@ const flush = () => {
           if (deps) node.deps = deps;
         }
         pushNode(node);
-        stack.push({ node, group: [] });
+        stack.push({ node, group: [], childTarget: (node.children as UiNode[]) });
         continue;
       }
       if (info === "vstack.start") {
@@ -261,7 +275,87 @@ const flush = () => {
           if (deps) node.deps = deps;
         }
         pushNode(node);
-        stack.push({ node, group: [] });
+        stack.push({ node, group: [], childTarget: (node.children as UiNode[]) });
+        continue;
+      }
+      if (info === "grid.start") {
+        flush();
+        const raw = (t.value || "").trim();
+        const parsed = raw ? safeParseYamlBlock(raw, '```grid.start') : undefined;
+        const restored = parsed !== undefined ? restoreTemplateData(parsed, templates.map) : undefined;
+        let data: Record<string, any> | undefined;
+        if (restored && typeof restored === 'object') {
+          const cfg: Record<string, any> = { ...restored };
+          if (cfg.width !== undefined) {
+            const normalized = normalizePixelValue(cfg.width);
+            if (normalized) cfg.width = normalized;
+          }
+          if (cfg.height !== undefined) {
+            const normalized = normalizePixelValue(cfg.height);
+            if (normalized) cfg.height = normalized;
+          }
+          data = cfg;
+        }
+        const node: UiNode = { id: genId(), type: "grid", children: [] };
+        if (data) {
+          node.data = data;
+          const deps = deriveDepsFromData(data);
+          if (deps) node.deps = deps;
+        }
+        pushNode(node);
+        stack.push({ node, group: [], childTarget: (node.children as UiNode[]) });
+        continue;
+      }
+      if (info === "grid end" || info === "grid.end") {
+        flush();
+        if (stack.length > 1) stack.pop();
+        continue;
+      }
+      if (info === "if.start") {
+        flush();
+        const rawBlock = (t.value || "").trim();
+        const parsed = rawBlock ? safeParseYamlBlock(rawBlock, '```if.start') : {};
+        const restored = restoreTemplateData(parsed, templates.map) ?? {};
+        if (!restored || typeof restored !== 'object') {
+          throw new Error('```if.start requires a YAML object.');
+        }
+        const data: Record<string, any> = { ...restored };
+        if (Object.prototype.hasOwnProperty.call(data, 'from')) {
+          data.value = data.value ?? data.from;
+          delete (data as any).from;
+        }
+        if (data.value === undefined && data.source !== undefined) {
+          data.value = data.source;
+        }
+        if (data.value === undefined && data.input !== undefined) {
+          data.value = data.input;
+        }
+        if (data.value === undefined) {
+          throw new Error('```if.start requires a `value` field.');
+        }
+        const deps = deriveDepsFromData(data);
+        const node: UiNode = { id: genId(), type: "if", data };
+        const truthyChildren: UiNode[] = [];
+        const falsyChildren: UiNode[] = [];
+        (node as any).truthy = truthyChildren;
+        (node as any).falsy = falsyChildren;
+        if (deps) node.deps = deps;
+        pushNode(node);
+        stack.push({ node, group: [], childTarget: truthyChildren, falsyTarget: falsyChildren, slot: 'truthy' });
+        continue;
+      }
+      if (info === "if.falsy" || info === "if.false" || info === "if.else") {
+        flush();
+        const frame = stack[stack.length - 1];
+        if (frame && frame.node.type === 'if' && frame.falsyTarget) {
+          frame.childTarget = frame.falsyTarget;
+          frame.slot = 'falsy';
+        }
+        continue;
+      }
+      if (info === "if end" || info === "if.end") {
+        flush();
+        if (stack.length > 1) stack.pop();
         continue;
       }
       if (info === "each.start") {
@@ -278,7 +372,11 @@ const flush = () => {
         const node: UiNode = { id: genId(), type: "each", children: [], data: nodeData };
         if (deps) node.deps = deps;
         pushNode(node);
-        stack.push({ node, group: [] });
+        stack.push({
+          node,
+          group: [],
+          childTarget: (node.children as UiNode[]),
+        });
         continue;
       }
       if (info === "each end" || info === "each.end") {
@@ -317,7 +415,7 @@ const flush = () => {
       const restored = restoreTemplatePlaceholders(normalized, templates.map);
       const text = restoreTemplateText(markdownToText(restored), templates.map);
       const refs = extractRefs(text);
-      (frame.node.children as UiNode[]).push({ id: genId(), type: "markdown", markdown: restored, text, refs });
+      frame.childTarget.push({ id: genId(), type: "markdown", markdown: restored, text, refs });
       frame.group = [];
     }
   }
@@ -398,6 +496,14 @@ function collectDocDependencies(nodes: UiNode[]): { globals?: string[]; queries?
     }
     if (Array.isArray((node as any).children)) {
       for (const child of (node.children as UiNode[]) || []) walk(child)
+    }
+    const truthyChildren = (node as any).truthy;
+    if (Array.isArray(truthyChildren)) {
+      for (const child of truthyChildren as UiNode[]) walk(child)
+    }
+    const falsyChildren = (node as any).falsy;
+    if (Array.isArray(falsyChildren)) {
+      for (const child of falsyChildren as UiNode[]) walk(child)
     }
   }
 

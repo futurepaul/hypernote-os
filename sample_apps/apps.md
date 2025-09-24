@@ -5,10 +5,9 @@ hypernote:
 ---
 Launch any installed app.
 
-```hstack.start
-wrap: true
+```grid.start
+columns: 4
 gap: 12px
-align: flex-end
 ```
 
 ```each.start
@@ -27,5 +26,5 @@ payload: app.id
 ```each.end
 ```
 
-```hstack.end
+```grid.end
 ```

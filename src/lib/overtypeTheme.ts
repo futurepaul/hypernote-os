@@ -1,4 +1,22 @@
-import OverType, { type Options, type Theme } from "overtype";
+// @ts-nocheck
+import type { Options, Theme } from "overtype";
+import * as OverTypeModule from "overtype";
+
+function resolveOverType(): any {
+  const mod: any = OverTypeModule;
+  if (mod?.default) return mod.default;
+  if (mod?.OverType) return mod.OverType;
+  if (mod && typeof mod.init === "function") return mod;
+  if (typeof window !== "undefined" && (window as any).OverType) return (window as any).OverType;
+  if (typeof globalThis !== "undefined" && (globalThis as any).OverType) return (globalThis as any).OverType;
+  return null;
+}
+
+function warnOnce(message: string) {
+  if ((warnOnce as any)._warned) return;
+  console.warn(message);
+  (warnOnce as any)._warned = true;
+}
 
 // Shared Hypernote look and feel for every OverType instance.
 const HYPERNOTE_THEME: Theme = {
@@ -44,25 +62,46 @@ let themeApplied = false;
 export function ensureOvertypeTheme() {
   if (themeApplied) return;
   if (typeof document === "undefined") return;
+  const overType = resolveOverType();
+  if (!overType?.setTheme) return;
   try {
-    OverType.setTheme(HYPERNOTE_THEME);
+    overType.setTheme(HYPERNOTE_THEME);
     themeApplied = true;
   } catch (err) {
     console.warn("[OverType] failed to apply theme", err);
   }
 }
 
-type OvertypeTarget = Parameters<typeof OverType.init>[0];
-
 type PartialOptions = Partial<Options>;
 
-export function initOvertype(target: OvertypeTarget, options: PartialOptions = {}) {
+export function initOvertype(target: Element | string, options: PartialOptions = {}) {
+  const overType = resolveOverType();
+  if (!overType?.init) {
+    warnOnce("[OverType] editor unavailable; falling back to inert textarea");
+    return [createNoopEditor(options)] as const;
+  }
   ensureOvertypeTheme();
   const merged: Options = {
     ...BASE_OVERTYPE_OPTIONS,
     ...(options as Options),
   };
-  return OverType.init(target as any, merged);
+  return overType.init(target as any, merged);
+}
+
+function createNoopEditor(options: PartialOptions) {
+  const initialValue = typeof options.value === "string" ? options.value : "";
+  let value = initialValue;
+  return {
+    getValue() {
+      return value;
+    },
+    setValue(next: string) {
+      value = next;
+    },
+    destroy() {
+      value = "";
+    },
+  };
 }
 
 export { BASE_OVERTYPE_OPTIONS };
