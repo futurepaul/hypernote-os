@@ -63,6 +63,15 @@ payload:
   naddr: "{{ app[0].naddr }}"
 ```
 
+```button
+text: View raw
+action: system.switch_app
+payload:
+  id: json-viewer
+  forms:
+    payload: "{{ app[0] | json:2 }}"
+```
+
 ---
 
 ```each.end

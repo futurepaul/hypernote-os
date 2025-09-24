@@ -166,7 +166,7 @@ const flush = () => {
       if (info === "button") {
         flush();
         const rawBlock = (t.value || "").trim();
-        const parsed = safeParseYamlBlock(rawBlock);
+        const parsed = safeParseYamlBlock(rawBlock, '```button');
         const data = restoreTemplateData(parsed, templates.map);
         const deps = deriveDepsFromData(data);
         const node: UiNode = { id: genId(), type: "button", data };
@@ -177,7 +177,7 @@ const flush = () => {
       if (info === "input") {
         flush();
         const rawBlock = (t.value || "").trim();
-        const parsed = safeParseYamlBlock(rawBlock);
+        const parsed = safeParseYamlBlock(rawBlock, '```input');
         const data = restoreTemplateData(parsed, templates.map);
         const deps = deriveDepsFromData(data);
         const node: UiNode = { id: genId(), type: "input", data };
@@ -188,7 +188,7 @@ const flush = () => {
       if (info === "markdown-editor" || info === "markdown_editor") {
         flush();
         const rawBlock = (t.value || "").trim();
-        const parsed = safeParseYamlBlock(rawBlock);
+        const parsed = safeParseYamlBlock(rawBlock, '```markdown_editor');
         const data = restoreTemplateData(parsed, templates.map);
         const deps = deriveDepsFromData(data);
         const node: UiNode = { id: genId(), type: "markdown_editor", data };
@@ -199,7 +199,7 @@ const flush = () => {
       if (info === "markdown.viewer" || info === "markdown_viewer" || info === "markdown-viewer") {
         flush();
         const rawBlock = (t.value || "").trim();
-        const parsed = safeParseYamlBlock(rawBlock);
+        const parsed = safeParseYamlBlock(rawBlock, '```markdown.viewer');
         const data = restoreTemplateData(parsed, templates.map);
         const deps = deriveDepsFromData(data);
         const node: UiNode = { id: genId(), type: "markdown_viewer", data };
@@ -207,10 +207,24 @@ const flush = () => {
         pushNode(node);
         continue;
       }
+      if (info === "json.viewer" || info === "json_viewer" || info === "json-debug" || info === "json.debug") {
+        flush();
+        const rawBlock = (t.value || "").trim();
+        const parsed = safeParseYamlBlock(rawBlock, '```json.viewer');
+        const data = restoreTemplateData(parsed, templates.map);
+        if (!data || typeof data !== 'object' || data.source === undefined || data.source === null) {
+          throw new Error('```json.viewer requires a `source` field.');
+        }
+        const deps = deriveDepsFromData(data);
+        const node: UiNode = { id: genId(), type: "json_viewer", data };
+        if (deps) node.deps = deps;
+        pushNode(node);
+        continue;
+      }
       if (info === "note" || info === "nostr.note" || info === "note-renderer" || info === "note_renderer") {
         flush();
         const rawBlock = (t.value || "").trim();
-        const parsed = safeParseYamlBlock(rawBlock);
+        const parsed = safeParseYamlBlock(rawBlock, '```note');
         const data = restoreTemplateData(parsed, templates.map);
         const deps = deriveDepsFromData(data);
         const node: UiNode = { id: genId(), type: "note", data };
@@ -221,7 +235,7 @@ const flush = () => {
       if (info === "hstack.start") {
         flush();
         const raw = (t.value || "").trim();
-        const parsed = raw ? safeParseYamlBlock(raw) : undefined;
+        const parsed = raw ? safeParseYamlBlock(raw, '```hstack.start') : undefined;
         const restored = parsed !== undefined ? restoreTemplateData(parsed, templates.map) : undefined;
         const data = restored ? sanitizeStackConfig(restored) : undefined;
         const node: UiNode = { id: genId(), type: "hstack", children: [] };
@@ -237,7 +251,7 @@ const flush = () => {
       if (info === "vstack.start") {
         flush();
         const raw = (t.value || "").trim();
-        const parsed = raw ? safeParseYamlBlock(raw) : undefined;
+        const parsed = raw ? safeParseYamlBlock(raw, '```vstack.start') : undefined;
         const restored = parsed !== undefined ? restoreTemplateData(parsed, templates.map) : undefined;
         const data = restored ? sanitizeStackConfig(restored) : undefined;
         const node: UiNode = { id: genId(), type: "vstack", children: [] };
@@ -253,7 +267,7 @@ const flush = () => {
       if (info === "each.start") {
         flush();
         const rawBlock = (t.value || "").trim();
-        const parsed = safeParseYamlBlock(rawBlock);
+        const parsed = safeParseYamlBlock(rawBlock, '```each.start');
         const data = restoreTemplateData(parsed, templates.map);
         let source = String((data?.from ?? data?.source) || 'queries.items');
         let as = String(data?.as || 'item');
@@ -309,6 +323,7 @@ const flush = () => {
   }
 
   const normalizedMeta = normalizeMeta(meta)
+  validateQueryDefinitions(normalizedMeta.queries)
   if (normalizedMeta.queries) assertNoLegacyQueryRefs(normalizedMeta.queries)
 
   const ast = (root.children || []) as UiNode[]
@@ -392,6 +407,44 @@ function collectDocDependencies(nodes: UiNode[]): { globals?: string[]; queries?
   if (globals.size) result.globals = Array.from(globals).sort()
   if (queries.size) result.queries = Array.from(queries).sort()
   return result.globals || result.queries ? result : undefined
+}
+
+function validateQueryDefinitions(queries?: Record<string, any>) {
+  if (!queries) return;
+
+  const visit = (definition: any, path: string) => {
+    if (!definition || typeof definition !== 'object') return;
+
+    if (Object.prototype.hasOwnProperty.call(definition, 'limit')) {
+      const limit = definition.limit;
+      if (Array.isArray(limit) || (limit && typeof limit === 'object')) {
+        throw new Error(`Query "${path}" has invalid limit: expected a number or string, received ${Array.isArray(limit) ? 'array' : typeof limit}.`);
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(definition, 'pipe')) {
+      const rawPipe = definition.pipe;
+      if (rawPipe !== undefined && rawPipe !== null) {
+        const arr = Array.isArray(rawPipe) ? rawPipe : [rawPipe];
+        const invalidEntry = arr.find(entry => {
+          if (typeof entry === 'string') return false;
+          if (entry && typeof entry === 'object' && !Array.isArray(entry)) return false;
+          return true;
+        });
+        if (invalidEntry !== undefined) {
+          throw new Error(`Query "${path}" pipe must be strings or objects. Received ${typeof invalidEntry}.`);
+        }
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(definition, 'query')) {
+      visit(definition.query, `${path}.query`);
+    }
+  };
+
+  for (const [name, def] of Object.entries(queries)) {
+    visit(def, name);
+  }
 }
 
 function mergeImageReferences(children: any[]): any[] {

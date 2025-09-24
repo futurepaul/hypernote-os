@@ -63,6 +63,15 @@ function applyLocalPipes(value: unknown, pipes: string[]): unknown {
         return typeof acc === 'string' ? acc.toUpperCase() : acc
       case 'trim':
         return typeof acc === 'string' ? acc.trim() : acc
+      case 'json': {
+        const spacingArg = parseSimpleArg(rawArg)
+        const spacing = typeof spacingArg === 'number' ? spacingArg : 2
+        try {
+          return JSON.stringify(acc, null, spacing)
+        } catch (err) {
+          return err instanceof Error ? err.message : String(err)
+        }
+      }
       default:
         return acc
     }

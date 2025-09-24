@@ -189,6 +189,34 @@ describe("compiler", () => {
     expect(rtViewer?.data?.value).toBe('{{ state.docs.snippet }}');
   });
 
+  test("json viewer requires a source", () => {
+    const md = `---\nname: Debug\n---\n\n\`\`\`json.viewer\nlabel: Missing source\n\`\`\`\n`;
+    expect(() => compileMarkdownDoc(md)).toThrow(/json\.viewer requires a `source` field/);
+  });
+
+  test("json viewer block compiles", () => {
+    const md = `---\nname: Debug\n---\n\n\`\`\`json.viewer\nsource: queries.feed\nlabel: Feed\n\`\`\`\n`;
+    const compiled = compileMarkdownDoc(md);
+    const viewer = compiled.ast.find(n => n.type === 'json_viewer');
+    expect(viewer).toBeTruthy();
+    expect(viewer?.data?.source).toBe('queries.feed');
+  });
+
+  test("invalid yaml surfaces a helpful error", () => {
+    const md = `---\nname: Bad\n---\n\n\`\`\`button\ntext: \"unterminated\n\`\`\`\n`;
+    expect(() => compileMarkdownDoc(md)).toThrow(/Failed to parse YAML for ```button/);
+  });
+
+  test("query validation rejects array limits", () => {
+    const md = `---\nname: BadLimit\nqueries:\n  feed:\n    kinds: [1]\n    limit:\n      - 1\n---\ncontent\n`;
+    expect(() => compileMarkdownDoc(md)).toThrow(/Query "feed" has invalid limit/);
+  });
+
+  test("query validation catches pipe errors", () => {
+    const md = `---\nname: BadPipe\nqueries:\n  feed:\n    kinds: [1]\n    pipe:\n      - 123\n---\ncontent\n`;
+    expect(() => compileMarkdownDoc(md)).toThrow(/Query "feed" pipe must be strings or objects/);
+  });
+
 
   test("button payload retains moustache templates", () => {
     const md = `---\nname: Button\n---\n\n\`\`\`button\ntext: Install\naction: "@install_app"\npayload:\n  naddr: "{{ $app.0.naddr }}"\n\`\`\`\n`;

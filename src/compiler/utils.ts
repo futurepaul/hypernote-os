@@ -31,20 +31,14 @@ export function splitFrontmatter(source: string): { meta: Record<string, any>; b
   return { meta, body };
 }
 
-export function safeParseYamlBlock(raw: string): any {
-  let data: any = undefined;
+export function safeParseYamlBlock(raw: string, context?: string): any {
   try {
-    data = YAML.parse(raw);
-  } catch {}
-  if (!data || typeof data !== 'object') {
-    data = {} as any;
-    for (const line of raw.split(/\r?\n/)) {
-      const m = line.match(/^\s*([A-Za-z0-9_.-]+)\s*:\s*(.*)$/);
-      if (m) data[String(m[1] ?? '')] = m[2];
-    }
-    if (!data.text) data.text = raw;
+    const data = YAML.parse(raw);
+    return data ?? {};
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Failed to parse YAML for ${context ?? 'code block'}: ${message}`);
   }
-  return data;
 }
 
 export function maskTemplatePlaceholders(source: string): TemplateMaskState {

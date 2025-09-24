@@ -4,6 +4,7 @@ import wallet from "../../sample_apps/wallet.md";
 import appStore from "../../sample_apps/app-store.md";
 import welcome from "../../sample_apps/welcome.md";
 import appsDoc from "../../sample_apps/apps.md";
+import jsonViewer from "../../sample_apps/json-viewer.md";
 
 export const defaultApps: Record<string, string> = {
   // invisible apps but we need them to be here for the compiler to work
@@ -31,4 +32,5 @@ System-wide actions.
   wallet,
   appStore,
   welcome,
+  "json-viewer": jsonViewer,
 };

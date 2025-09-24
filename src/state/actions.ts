@@ -129,28 +129,53 @@ const systemActionHandlers: Record<string, SystemActionHandler> = {
       console.warn('@switch_app: failed to persist intent', err)
     }
 
-    if (handle && (handle.forms || handle.state)) {
-      const refScope: ReferenceScope = {
-        globals: scope?.globals ?? {},
-        queries: scope?.queries ?? {},
+    const refScope: ReferenceScope = {
+      globals: scope?.globals ?? {},
+      queries: scope?.queries ?? {},
+    }
+
+    if (handle?.forms) {
+      const resolvedForms = evaluateActionUpdates(handle.forms, refScope)
+      if (resolvedForms) {
+        try {
+          store.set(formsAtom(targetId), (prev: Record<string, any> | undefined) => ({ ...(prev || {}), ...resolvedForms }))
+        } catch (err) {
+          console.warn('@switch_app: failed to update forms', err)
+        }
       }
-      if (handle.forms) {
-        const resolvedForms = evaluateActionUpdates(handle.forms, refScope)
+    }
+
+    if (handle?.state) {
+      const resolvedState = evaluateActionUpdates(handle.state, refScope)
+      if (resolvedState) {
+        try {
+          store.set(docStateAtom(targetId), (prev: Record<string, any> | undefined) => ({ ...(prev || {}), ...resolvedState }))
+        } catch (err) {
+          console.warn('@switch_app: failed to update state', err)
+        }
+      }
+    }
+
+    if (payload && typeof payload === 'object') {
+      const directForms = (payload as any).forms
+      const directState = (payload as any).state
+      if (directForms && typeof directForms === 'object') {
+        const resolvedForms = evaluateActionUpdates(directForms, refScope)
         if (resolvedForms) {
           try {
             store.set(formsAtom(targetId), (prev: Record<string, any> | undefined) => ({ ...(prev || {}), ...resolvedForms }))
           } catch (err) {
-            console.warn('@switch_app: failed to update forms', err)
+            console.warn('@switch_app: failed to apply payload forms', err)
           }
         }
       }
-      if (handle.state) {
-        const resolvedState = evaluateActionUpdates(handle.state, refScope)
+      if (directState && typeof directState === 'object') {
+        const resolvedState = evaluateActionUpdates(directState, refScope)
         if (resolvedState) {
           try {
             store.set(docStateAtom(targetId), (prev: Record<string, any> | undefined) => ({ ...(prev || {}), ...resolvedState }))
           } catch (err) {
-            console.warn('@switch_app: failed to update state', err)
+            console.warn('@switch_app: failed to apply payload state', err)
           }
         }
       }

@@ -123,6 +123,7 @@ height: 180
 ## Built-in Nodes & Nostr Links
 
 - ```note``` renders a nostr event body. Pass the event in `event:` and optionally a profile map in `profile:` if you want the renderer to draw avatar/name/timestamp. When `profile` is omitted the node emits just the parsed content.
+- ```json.viewer``` prints any value as formatted JSON. Pass `source:` (e.g. `queries.feed`) and optional `label`, `maxDepth`, or `collapsed`. Handy for debugging state inside an app.
 - Markdown links support the `nostr:` scheme. Examples:
   - `[View profile](nostr:{{ queries.feed[0].npub }})`
   - `[Open note](nostr:{{ queries.feed[0].nevent }})`

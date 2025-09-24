@@ -6,6 +6,7 @@ import { docsAtom, openWindowAtom, bringWindowToFrontAtom, relaysAtom, editorSel
 import { parseFrontmatterName } from "../state/docs";
 import { getDefaultDocs, saveUserDocs, loadUserDocs, isDefaultDocId } from '../state/docs'
 import { compileMarkdownDoc } from '../compiler'
+import { useSystemAction } from '../state/actions'
 import { publishApp, installByNaddr } from '../services/apps'
 
 export function EditorPanel() {
@@ -32,6 +33,7 @@ export function EditorPanel() {
   const [current, setCurrent] = useAtom(editorSelectionAtom)
   const [value, setValue] = useState<string>(() => (current ? (docs[current as keyof typeof docs] || '') : ''))
   const [publishing, setPublishing] = useState(false)
+  const openJsonViewer = useSystemAction('system.switch_app', 'editor')
   const containerRef = useRef<HTMLDivElement | null>(null)
   const editorRef = useRef<any>(null)
 
@@ -116,6 +118,24 @@ export function EditorPanel() {
     }
   }
 
+  function viewAst() {
+    if (!current) {
+      alert('Select a document before viewing the AST.')
+      return
+    }
+    try {
+      const compiled = compileMarkdownDoc(value)
+      const payload = JSON.stringify(compiled, null, 2)
+      if (openJsonViewer) {
+        void openJsonViewer({ id: 'json-viewer', forms: { payload } }, { windowId: 'editor', globals: { doc: compiled } })
+      } else {
+        alert(payload)
+      }
+    } catch (e) {
+      alert('Failed to compile document: ' + (e as any)?.message)
+    }
+  }
+
   return (
     <div className="flex h-[80vh] w-[820px]">
       {/* Sidebar */}
@@ -160,6 +180,10 @@ export function EditorPanel() {
             }}
             className="ml-4 px-2 py-0.5 text-sm bg-[var(--win-bg)] text-gray-900 border border-[var(--bevel-dark)] shadow-[inset_-1px_-1px_0_0_var(--bevel-dark),inset_1px_1px_0_0_var(--bevel-light)] hover:brightness-105"
           >Export .md</button>
+          <button
+            onClick={viewAst}
+            className="ml-2 px-2 py-0.5 text-sm bg-[var(--win-bg)] text-gray-900 border border-[var(--bevel-dark)] shadow-[inset_-1px_-1px_0_0_var(--bevel-dark),inset_1px_1px_0_0_var(--bevel-light)] hover:brightness-105"
+          >View AST</button>
         </div>
         <div ref={containerRef} className="flex-1 overflow-hidden" style={{ height: '100%' }} />
       </div>

@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState, useRef, useCallback, Fragment, type ReactNode, type CSSProperties, type MouseEvent } from "react";
+import { useMemo, useEffect, useState, useRef, useCallback, Fragment, Component, type ReactNode, type CSSProperties, type MouseEvent, type ErrorInfo } from "react";
 import { initOvertype } from "../lib/overtypeTheme";
 import { useAtom, useAtomValue } from "jotai";
 import type { UiNode } from "../compiler";
@@ -12,6 +12,49 @@ import { formatDateHelper } from "../lib/datetime";
 import { nip19 } from "nostr-tools";
 
 export type Node = UiNode;
+
+type NodeBoundaryProps = {
+  node: Node;
+  windowId: string;
+  children: ReactNode;
+};
+
+type NodeBoundaryState = {
+  error: Error | null;
+};
+
+class NodeBoundary extends Component<NodeBoundaryProps, NodeBoundaryState> {
+  state: NodeBoundaryState = { error: null };
+
+  static getDerivedStateFromError(error: Error): NodeBoundaryState {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    const { node, windowId } = this.props;
+    console.warn('[RenderNodes] node error', { windowId, nodeType: node.type, nodeId: node.id, info: info?.componentStack }, error);
+  }
+
+  componentDidUpdate(prevProps: NodeBoundaryProps) {
+    if (this.state.error && (prevProps.node !== this.props.node || prevProps.node.id !== this.props.node.id)) {
+      this.setState({ error: null });
+    }
+  }
+
+  render(): ReactNode {
+    if (this.state.error) {
+      const { node } = this.props;
+      return (
+        <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2">
+          <strong>Failed to render `{node.type}`</strong>
+          <div className="mt-1">Check the console for details.</div>
+        </div>
+      );
+    }
+
+    return <>{this.props.children}</>;
+  }
+}
 
 type RenderNodesProps = {
   nodes: Node[];
@@ -270,6 +313,107 @@ function NoteNode({ data, globals, queries, windowId }: { data?: any; globals: a
         {paragraphs.length ? <div className="flex flex-col gap-2">{paragraphs}</div> : null}
         {mediaNodes.length ? <div className="flex flex-col gap-2">{mediaNodes}</div> : null}
       </div>
+    </div>
+  );
+}
+
+function JsonViewerNode({ data, globals, queries }: { data?: any; globals: any; queries: Record<string, any> }) {
+  const sourceSpec = data?.source ?? data?.value ?? data?.from;
+  const maxDepth = typeof data?.maxDepth === 'number' && data.maxDepth >= 0 ? data.maxDepth : undefined;
+  const collapsedDefault = data?.collapsed === true;
+  const label = typeof data?.label === 'string' ? data.label : undefined;
+  const [collapsed, setCollapsed] = useState(collapsedDefault);
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle');
+
+  const rawValue = useMemo(() => {
+    return buildPayload(sourceSpec, globals, queries);
+  }, [sourceSpec, globals, queries]);
+
+  const { value, parseError } = useMemo(() => {
+    if (typeof rawValue === 'string') {
+      try {
+        const trimmed = rawValue.trim();
+        if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+          return { value: JSON.parse(rawValue), parseError: null };
+        }
+      } catch (err) {
+        return { value: rawValue, parseError: err instanceof Error ? err.message : String(err) };
+      }
+    }
+    return { value: rawValue, parseError: null };
+  }, [rawValue]);
+
+  const formatted = useMemo(() => {
+    if (value === undefined) return 'undefined';
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number' || typeof value === 'boolean' || value === null) return JSON.stringify(value, null, 2);
+
+    const seen = new WeakSet<object>();
+    const prunePlaceholder = '[Max depth]';
+
+    const transform = (input: any, depth: number): any => {
+      if (maxDepth !== undefined && depth > maxDepth) return prunePlaceholder;
+      if (input && typeof input === 'object') {
+        if (seen.has(input)) return '[Circular]';
+        seen.add(input);
+        if (Array.isArray(input)) return input.map(item => transform(item, depth + 1));
+        const out: Record<string, any> = {};
+        for (const [k, v] of Object.entries(input)) out[k] = transform(v, depth + 1);
+        return out;
+      }
+      return input;
+    };
+
+    try {
+      const processed = transform(value, 0);
+      return JSON.stringify(processed, null, 2);
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err);
+    }
+  }, [value, maxDepth]);
+
+  const handleCopy = useCallback(() => {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(typeof rawValue === 'string' ? rawValue : formatted).then(() => setCopyState('copied')).catch(() => setCopyState('error'));
+      } else {
+        setCopyState('error');
+      }
+    } catch {
+      setCopyState('error');
+    }
+    setTimeout(() => setCopyState('idle'), 1500);
+  }, [rawValue, formatted]);
+
+  const headerLabel = label ?? (typeof sourceSpec === 'string' ? sourceSpec : 'JSON Viewer');
+
+  return (
+    <div className="border border-[var(--bevel-dark)] rounded bg-white/70 text-xs text-gray-900">
+      <div className="flex items-center justify-between border-b border-[var(--bevel-light)] px-2 py-1 bg-[var(--win-bg)]/70">
+        <span className="font-medium truncate" title={headerLabel}>{headerLabel}</span>
+        <div className="flex items-center gap-1">
+          {parseError && <span className="text-red-600" title={parseError}>parse error</span>}
+          <button
+            type="button"
+            className="px-1 py-0.5 rounded border border-transparent hover:border-[var(--accent)]"
+            onClick={() => setCollapsed(v => !v)}
+          >
+            {collapsed ? 'Expand' : 'Collapse'}
+          </button>
+          <button
+            type="button"
+            className="px-1 py-0.5 rounded border border-transparent hover:border-[var(--accent)]"
+            onClick={handleCopy}
+          >
+            {copyState === 'copied' ? 'Copied' : copyState === 'error' ? 'Error' : 'Copy'}
+          </button>
+        </div>
+      </div>
+      {!collapsed && (
+        <pre className="overflow-auto max-h-64 whitespace-pre-wrap break-all px-2 py-2 text-[11px] leading-snug bg-white">
+          {formatted}
+        </pre>
+      )}
     </div>
   );
 }
@@ -589,23 +733,30 @@ function buildSwitchPayloadFromNostrUri(href: string): Record<string, any> | nul
       case 'npub': {
         const pubkey = bytesOrStringToHex(decoded.data);
         if (!pubkey) return null;
-        return { kind: 0, pubkey, value: trimmed, uri: trimmed };
+        const payload = { kind: 0, pubkey, value: trimmed, uri: trimmed };
+        console.log('[buildSwitchPayloadFromNostrUri] npub', payload);
+        return payload;
       }
       case 'nprofile': {
         const data = decoded.data as { pubkey?: string };
         const pubkey = typeof data.pubkey === 'string' ? data.pubkey : null;
         if (!pubkey) return null;
-        return { kind: 0, pubkey, value: trimmed, uri: trimmed, relays: Array.isArray(data.relays) ? data.relays : undefined };
+        const payload = { kind: 0, pubkey, value: trimmed, uri: trimmed, relays: Array.isArray(data.relays) ? data.relays : undefined };
+        console.log('[buildSwitchPayloadFromNostrUri] nprofile', payload);
+        return payload;
       }
       case 'note': {
         const id = bytesOrStringToHex(decoded.data);
         if (!id) return null;
-        return { kind: 1, eventId: id, value: trimmed, uri: trimmed };
+        const payload = { kind: 1, eventId: id, value: trimmed, uri: trimmed };
+        console.log('[buildSwitchPayloadFromNostrUri] note', payload);
+        return payload;
       }
       case 'nevent': {
         const data = decoded.data as { id: string; author?: string; kind?: number; relays?: string[] };
+
         if (!data?.id) return null;
-        return {
+        const payload = {
           kind: typeof data.kind === 'number' ? data.kind : 1,
           eventId: data.id,
           author: data.author,
@@ -613,11 +764,13 @@ function buildSwitchPayloadFromNostrUri(href: string): Record<string, any> | nul
           value: trimmed,
           uri: trimmed,
         };
+        console.log('[buildSwitchPayloadFromNostrUri] nevent', payload);
+        return payload;
       }
       case 'naddr': {
         const data = decoded.data as { identifier: string; kind: number; pubkey: string; relays?: string[] };
         if (!data || typeof data.kind !== 'number' || typeof data.pubkey !== 'string') return null;
-        return {
+        const payload = {
           kind: data.kind,
           identifier: data.identifier,
           pubkey: data.pubkey,
@@ -626,6 +779,8 @@ function buildSwitchPayloadFromNostrUri(href: string): Record<string, any> | nul
           uri: trimmed,
           relays: Array.isArray(data.relays) ? data.relays : undefined,
         };
+        console.log('[buildSwitchPayloadFromNostrUri] naddr', payload);
+        return payload;
       }
       default:
         return null;
@@ -643,14 +798,13 @@ function bytesOrStringToHex(data: string | Uint8Array | undefined): string | nul
 }
 
 export function RenderNodes({ nodes, globals, windowId, queries, statuses, inline = false, debug = false }: RenderNodesProps) {
-  const renderNode = (n: Node, key: number): ReactNode => {
+  const renderNodeContent = (n: Node, key: number): ReactNode => {
     if (n.type === "markdown") {
-      return <MarkdownNode key={n.id || key} n={n} globals={globals} queries={queries} windowId={windowId} />;
+      return <MarkdownNode n={n} globals={globals} queries={queries} windowId={windowId} />;
     }
     if (n.type === "button") {
       return (
         <ButtonNode
-          key={n.id || key}
           text={n.data?.text || ""}
           action={n.data?.action}
           globals={globals}
@@ -664,7 +818,6 @@ export function RenderNodes({ nodes, globals, windowId, queries, statuses, inlin
     if (n.type === "markdown_editor") {
       return (
         <MarkdownEditorNode
-          key={n.id || key}
           data={n.data}
           windowId={windowId}
         />
@@ -673,7 +826,6 @@ export function RenderNodes({ nodes, globals, windowId, queries, statuses, inlin
     if (n.type === "markdown_viewer") {
       return (
         <MarkdownViewerNode
-          key={n.id || key}
           data={n.data}
           globals={globals}
           queries={queries}
@@ -683,7 +835,6 @@ export function RenderNodes({ nodes, globals, windowId, queries, statuses, inlin
     if (n.type === "input") {
       return (
         <InputNode
-          key={n.id || key}
           text={n.data?.text || ""}
           name={n.data?.name}
           globals={globals}
@@ -696,7 +847,6 @@ export function RenderNodes({ nodes, globals, windowId, queries, statuses, inlin
       const style = stackStyleFromData(n.data);
       return (
         <div
-          key={key}
           className={n.type === "hstack" ? "flex flex-row gap-2" : "flex flex-col gap-2"}
           style={style}
         >
@@ -718,7 +868,6 @@ export function RenderNodes({ nodes, globals, windowId, queries, statuses, inlin
     if (n.type === "each") {
       return (
         <EachNode
-          key={n.id || key}
           node={n}
           globals={globals}
           windowId={windowId}
@@ -731,7 +880,6 @@ export function RenderNodes({ nodes, globals, windowId, queries, statuses, inlin
     if (n.type === "note") {
       return (
         <NoteNode
-          key={n.id || key}
           data={n.data}
           globals={globals}
           queries={queries}
@@ -739,10 +887,18 @@ export function RenderNodes({ nodes, globals, windowId, queries, statuses, inlin
         />
       );
     }
+    if (n.type === "json_viewer") {
+      return (
+        <JsonViewerNode
+          data={n.data}
+          globals={globals}
+          queries={queries}
+        />
+      );
+    }
     if (n.type === "literal_code") {
       return (
         <LiteralCodeBlock
-          key={n.id || key}
           code={typeof n.text === 'string' ? n.text : ''}
           lang={typeof n.data?.lang === 'string' ? n.data.lang : undefined}
         />
@@ -751,7 +907,18 @@ export function RenderNodes({ nodes, globals, windowId, queries, statuses, inlin
     return null;
   };
 
-  const content = nodes.map((n, i) => renderNode(n, i));
+  const wrapNode = (n: Node, idx: number): ReactNode => {
+    const content = renderNodeContent(n, idx);
+    if (content === null || content === undefined) return null;
+    const boundaryKey = n.id || idx;
+    return (
+      <NodeBoundary key={boundaryKey} node={n} windowId={windowId}>
+        {content}
+      </NodeBoundary>
+    );
+  };
+
+  const content = nodes.map((n, i) => wrapNode(n, i));
   if (inline) return <>{content}</>;
   return <div className="flex flex-col gap-2">{content}</div>;
 }

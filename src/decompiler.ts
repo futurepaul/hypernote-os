@@ -46,9 +46,9 @@ function encodeNode(n: UiNode): string {
     const text = markdownToText(nodes || [])
     return text.trim()
   }
-  if (n.type === 'button' || n.type === 'input' || n.type === 'markdown_editor' || n.type === 'note') {
+  if (n.type === 'button' || n.type === 'input' || n.type === 'markdown_editor' || n.type === 'note' || n.type === 'json_viewer') {
     const y = YAML.stringify(n.data || {}).trimEnd()
-    const lang = n.type === 'markdown_editor' ? 'markdown-editor' : n.type
+    const lang = n.type === 'markdown_editor' ? 'markdown-editor' : (n.type === 'json_viewer' ? 'json.viewer' : n.type)
     return `\n\`\`\`${lang}\n${y}\n\`\`\`\n`
   }
   if ((n as any).type === 'markdown_viewer') {
