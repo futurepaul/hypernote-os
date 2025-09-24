@@ -17,6 +17,7 @@ type StartArgs = {
 }
 
 type WindowSession = {
+  docTemplate: any
   docSubject: BehaviorSubject<any>
   contextSubject: BehaviorSubject<any>
   metaKey: string
@@ -97,9 +98,13 @@ class QueryRuntime {
         const docChanged = session.docFingerprint !== docFingerprint
         const contextChanged = session.contextFingerprint !== contextFingerprint
         if (docChanged) {
+          session.docTemplate = docTemplate
           session.docFingerprint = docFingerprint
-          session.docSubject.next(docTemplate)
-          if (debugEnabled) console.debug(`${debugPrefix} doc update`, { queryKeys: Object.keys(docTemplate).filter(k => k.startsWith('$')).map(k => k.slice(1)) })
+        }
+        if (docChanged || contextChanged) {
+          const resolved = resolveDocWithContext(session.docTemplate, context)
+          session.docSubject.next(resolved)
+          if (debugEnabled) console.debug(`${debugPrefix} doc update`, { queryKeys: Object.keys(resolved).filter(k => k.startsWith('$')).map(k => k.slice(1)) })
         }
         if (contextChanged) {
           session.contextFingerprint = contextFingerprint
@@ -113,7 +118,8 @@ class QueryRuntime {
         console.debug(`${debugPrefix} start`, { relays, contextKeys: Object.keys(context || {}), queryKeys: queryEntries.map(([name]) => name) })
       }
 
-      const docSubject = new BehaviorSubject(docTemplate)
+      const resolvedDoc = resolveDocWithContext(docTemplate, context)
+      const docSubject = new BehaviorSubject(resolvedDoc)
       const contextSubject = new BehaviorSubject(context)
 
       const streamMap: Map<string, any> = this.client.composeDocQueries(
@@ -139,6 +145,7 @@ class QueryRuntime {
       if (debugEnabled) console.debug(`${debugPrefix} registered streams`, Object.keys(normalizedStreams))
 
       this.sessions.set(windowId, {
+        docTemplate,
         docSubject,
         contextSubject,
         metaKey,
@@ -160,6 +167,40 @@ function buildDocTemplate(windowId: string, meta: HypernoteMeta | Record<string,
     doc[`$${name}`] = def
   }
   return doc
+}
+
+function resolveDocWithContext(doc: any, context: any): any {
+  return deepMap(doc, value => resolveValue(value, context))
+}
+
+function deepMap(value: any, transform: (val: any) => any): any {
+  if (Array.isArray(value)) return value.map(item => deepMap(item, transform))
+  if (value && typeof value === 'object') {
+    const out: Record<string, any> = {}
+    for (const [key, val] of Object.entries(value)) out[key] = deepMap(val, transform)
+    return out
+  }
+  return transform(value)
+}
+
+function resolveValue(raw: any, context: any): any {
+  if (typeof raw !== 'string') return raw
+  const trimmed = raw.trim()
+  if (!trimmed) return raw
+  if (trimmed.startsWith('queries.')) return `$${trimmed.slice('queries.'.length)}`
+  const resolved = getContextPath(trimmed, context)
+  return resolved !== undefined ? resolved : raw
+}
+
+function getContextPath(path: string, context: any): any {
+  const parts = path.split('.').filter(Boolean)
+  if (!parts.length) return undefined
+  let current: any = context
+  for (const part of parts) {
+    if (current == null || typeof current !== 'object') return undefined
+    current = current[part]
+  }
+  return current
 }
 
 function toRenderable(value: any): any {
