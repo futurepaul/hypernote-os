@@ -4,14 +4,14 @@ hypernote:
   icon: folder.png
   handles:
     - kind: 1
+      state:
+        event_target: payload.eventId
 state:
-  event_target: payload.eventId
+  event_target: null
 queries:
   note:
     ids:
       - state.event_target
-    limit:
-      - 1
   profile:
     args:
       - pubkey
@@ -19,7 +19,7 @@ queries:
       kinds:
         - 0
       authors:
-        - pubkey
+        - $pubkey
       limit: 1
     pipe:
       - first
@@ -33,23 +33,20 @@ queries:
       - enrich:
           with: queries.profile
           args:
-            pubkey: $item.pubkey 
+            pubkey: $item.pubkey
 ---
-Hello from note-viewer?
 
 {{ state.event_target }}
 
-{{ queries.note_enriched }}
-
 ```each.start
 from: queries.note_enriched
-as: note
+as: pair
 ```
 
-__[{{ note[1].display_name || note[1].name || note[0].pubkey }}](nostr:{{ note[0].npub || note[0].pubkey }})__ - _{{ note[0].created_at | format_date:datetime }}_
+__[{{ (pair[1] && pair[1].display_name) || (pair[1] && pair[1].name) || pair[0].pubkey }}](nostr:{{ pair[0].npub || pair[0].pubkey }})__ · _{{ pair[0].created_at | format_date:datetime }}_
 
 ```note
-event: note[0]
+event: pair[0]
 ```
 
 ```each.end
