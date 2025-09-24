@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
 import { getDefaultStore } from 'jotai'
+import { BehaviorSubject } from 'rxjs'
 import { queryRuntime } from './runtime'
 import { hypersauceClientAtom } from '../state/hypersauce'
 import { windowQueryStreamsAtom } from '../state/queriesAtoms'
@@ -19,9 +20,15 @@ test('queryRuntime exposes composeDocQueries streams', async () => {
   const payload = [{ foo: 'bar' }]
   let capturedDoc: any
   let capturedDebug: any = null
+  let docSubject: BehaviorSubject<any> | null = null
+  let contextSubject: BehaviorSubject<any> | null = null
+  let composeCalls = 0
   const client = {
     composeDocQueries(doc: any, _context: any, opts?: any) {
-      capturedDoc = doc
+      composeCalls += 1
+      docSubject = doc as BehaviorSubject<any>
+      contextSubject = _context as BehaviorSubject<any>
+      capturedDoc = docSubject.getValue()
       capturedDebug = opts
       return new Map([
         [
@@ -48,6 +55,8 @@ test('queryRuntime exposes composeDocQueries streams', async () => {
     context: { user: { pubkey: 'abc' } },
   })
 
+  expect(docSubject).toBeInstanceOf(BehaviorSubject)
+  expect(contextSubject).toBeInstanceOf(BehaviorSubject)
   expect(capturedDoc?.$feed).toEqual(meta.queries.feed)
   expect(typeof capturedDebug?.onDebug).toBe('function')
   const streams = store.get(windowQueryStreamsAtom(windowId))
@@ -59,6 +68,16 @@ test('queryRuntime exposes composeDocQueries streams', async () => {
   })
   subscription.unsubscribe()
   expect(results[0]).toEqual(payload)
+
+  await queryRuntime.start({
+    windowId,
+    meta,
+    relays,
+    context: { user: { pubkey: 'abc' }, form: { topic: 'nostr' } },
+  })
+
+  expect(composeCalls).toBe(1)
+  expect(contextSubject?.getValue()).toEqual({ user: { pubkey: 'abc' }, form: { topic: 'nostr' } })
 
   queryRuntime.stop(windowId)
   expect(store.get(windowQueryStreamsAtom(windowId))).toEqual({})

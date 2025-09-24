@@ -2,6 +2,7 @@
 // query subscriptions and exposes streams directly back to the store.
 
 import { getDefaultStore } from 'jotai'
+import { BehaviorSubject } from 'rxjs'
 import { nip19 } from 'nostr-tools'
 import { hypersauceClientAtom } from '../state/hypersauce'
 import { windowQueryStreamsAtom } from '../state/queriesAtoms'
@@ -16,10 +17,19 @@ type StartArgs = {
   context: any // { user: { pubkey } }
 }
 
+type WindowSession = {
+  docSubject: BehaviorSubject<any>
+  contextSubject: BehaviorSubject<any>
+  metaKey: string
+  docFingerprint: string
+  contextFingerprint: string
+}
+
 class QueryRuntime {
   private client: any | null = null
   private relays: string[] = []
   private warnedMissing = false
+  private sessions = new Map<string, WindowSession>()
 
   async ensureClient(relays: string[]): Promise<boolean> {
     const store = getDefaultStore()
@@ -47,14 +57,22 @@ class QueryRuntime {
     }
   }
 
+  private destroySession(windowId: string) {
+    const session = this.sessions.get(windowId)
+    if (!session) return
+    try { session.docSubject.complete() } catch {}
+    try { session.contextSubject.complete() } catch {}
+    this.sessions.delete(windowId)
+  }
+
   stop(windowId: string) {
     const store = getDefaultStore()
     try { store.set(windowQueryStreamsAtom(windowId), {}) } catch {}
+    this.destroySession(windowId)
   }
 
   async start({ windowId, meta, relays, context }: StartArgs) {
     try {
-      this.stop(windowId)
       const queriesMeta = (meta && typeof meta.queries === 'object') ? (meta.queries as Record<string, any>) : {}
       const queryEntries = Object.entries(queriesMeta)
       if (!queryEntries.length) return
@@ -62,23 +80,45 @@ class QueryRuntime {
       if (!ok) return
       if (!context?.user?.pubkey) return
 
-      const doc: any = { type: 'hypernote', name: String(windowId) }
       const store = getDefaultStore()
       const debugEnabled = !!store.get(debugAtom)
       const debugPrefix = debugEnabled ? `[Runtime:${windowId}]` : ''
+      const docTemplate = buildDocTemplate(windowId, meta, queryEntries)
+      const resolvedDoc = resolveQueryDoc(docTemplate, context)
+      const metaKey = JSON.stringify(docTemplate)
+      const docFingerprint = JSON.stringify(resolvedDoc)
+      const contextFingerprint = JSON.stringify(context || {})
+
+      let session = this.sessions.get(windowId)
+      if (session && session.metaKey !== metaKey) {
+        this.destroySession(windowId)
+        session = undefined
+      }
+
+      if (session) {
+        if (session.docFingerprint !== docFingerprint) {
+          session.docFingerprint = docFingerprint
+          session.docSubject.next(resolvedDoc)
+          if (debugEnabled) console.debug(`${debugPrefix} doc update`, { queryKeys: Object.keys(resolvedDoc).filter(k => k.startsWith('$')).map(k => k.slice(1)) })
+        }
+        if (session.contextFingerprint !== contextFingerprint) {
+          session.contextFingerprint = contextFingerprint
+          session.contextSubject.next(context)
+          if (debugEnabled) console.debug(`${debugPrefix} context update`, { keys: Object.keys(context || {}) })
+        }
+        return
+      }
+
       if (debugEnabled) {
         console.debug(`${debugPrefix} start`, { relays, contextKeys: Object.keys(context || {}), queryKeys: queryEntries.map(([name]) => name) })
       }
-      if (meta?.hypernote && typeof meta.hypernote === 'object') doc.hypernote = meta.hypernote
-      for (const [name, def] of queryEntries) {
-        doc[`$${name}`] = normalizeQueryDefinition(def)
-      }
 
-      const resolvedDoc = resolveQueryDoc(doc, context)
-      if (debugEnabled) console.debug(`${debugPrefix} resolvedDoc`, resolvedDoc)
+      const docSubject = new BehaviorSubject(resolvedDoc)
+      const contextSubject = new BehaviorSubject(context)
+
       const streamMap: Map<string, any> = this.client.composeDocQueries(
-        resolvedDoc,
-        context,
+        docSubject,
+        contextSubject,
         debugEnabled
           ? {
               onDebug(debugMap) {
@@ -97,6 +137,14 @@ class QueryRuntime {
       const normalizedStreams = Object.fromEntries(entries)
       store.set(windowQueryStreamsAtom(windowId), normalizedStreams)
       if (debugEnabled) console.debug(`${debugPrefix} registered streams`, Object.keys(normalizedStreams))
+
+      this.sessions.set(windowId, {
+        docSubject,
+        contextSubject,
+        metaKey,
+        docFingerprint,
+        contextFingerprint,
+      })
     } catch (e) {
       console.warn('[Hypersauce] start error', e)
     }
@@ -104,6 +152,15 @@ class QueryRuntime {
 }
 
 export const queryRuntime = new QueryRuntime()
+
+function buildDocTemplate(windowId: string, meta: HypernoteMeta | Record<string, any>, queryEntries: Array<[string, any]>) {
+  const doc: any = { type: 'hypernote', name: String(windowId) }
+  if (meta?.hypernote && typeof meta.hypernote === 'object') doc.hypernote = meta.hypernote
+  for (const [name, def] of queryEntries) {
+    doc[`$${name}`] = normalizeQueryDefinition(def)
+  }
+  return doc
+}
 
 function resolveQueryDoc(doc: any, context: any): any {
   return deepResolve(doc, context)
