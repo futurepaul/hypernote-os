@@ -61,7 +61,7 @@ type RenderNodesProps = {
   globals: any;
   windowId: string;
   queries: Record<string, any>;
-  statuses?: Record<string, QueryStatus>;
+  errors?: Record<string, string>;
   inline?: boolean;
   debug?: boolean;
 };
@@ -633,27 +633,25 @@ function MarkdownViewerNode({ data, globals, queries }: { data?: any; globals: a
   );
 }
 
-type QueryStatus = 'loading' | 'ready' | 'error';
-
-function EachNode({ node, globals, windowId, queries, statuses, debug = false }: { node: Node; globals: any; windowId: string; queries: Record<string, any>; statuses?: Record<string, QueryStatus>; debug?: boolean }) {
+function EachNode({ node, globals, windowId, queries, errors, debug = false }: { node: Node; globals: any; windowId: string; queries: Record<string, any>; errors?: Record<string, string>; debug?: boolean }) {
   const data = node.data || {};
   const sourceExpr = typeof data.source === 'string' ? data.source.trim() : 'queries.items';
   const asNameRaw = typeof data.as === 'string' && data.as.length > 0 ? data.as : 'item';
   const asName = asNameRaw.trim() || 'item';
   const listRaw = resolveReference(sourceExpr, { globals, queries });
   const sourceQueryId = referenceQueryId(sourceExpr);
-  const status = sourceQueryId ? statuses?.[sourceQueryId] : undefined;
-  if (debug) console.log(`[Each] source=${sourceExpr}`, { status, listRaw });
-  if (status === 'loading' || status === null || (status === undefined && listRaw === undefined)) {
-    return <div className="italic text-sm text-gray-600">Loading…</div>;
+  const errorMessage = sourceQueryId ? errors?.[sourceQueryId] : undefined;
+  if (debug) console.log(`[Each] source=${sourceExpr}`, { errorMessage, listRaw });
+  if (errorMessage) {
+    return <div className="italic text-sm text-red-600">{errorMessage || 'Failed to load.'}</div>;
   }
-  if (status === 'error') {
-    return <div className="italic text-sm text-red-600">Failed to load.</div>;
+  if (listRaw === undefined) {
+    return <div className="italic text-sm text-gray-600">Loading…</div>;
   }
   const list = Array.isArray(listRaw) ? listRaw : [];
   if (debug) console.log(`[Each] source=${sourceExpr}`, { length: list.length });
   if (!Array.isArray(listRaw)) return null;
-  if (!list.length && status === 'ready') return null;
+  if (!list.length) return null;
 
   return (
     <div className="flex flex-col gap-3">
@@ -797,7 +795,7 @@ function bytesOrStringToHex(data: string | Uint8Array | undefined): string | nul
   return Array.from(data).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-export function RenderNodes({ nodes, globals, windowId, queries, statuses, inline = false, debug = false }: RenderNodesProps) {
+export function RenderNodes({ nodes, globals, windowId, queries, errors, inline = false, debug = false }: RenderNodesProps) {
   const renderNodeContent = (n: Node, key: number): ReactNode => {
     if (n.type === "markdown") {
       return <MarkdownNode n={n} globals={globals} queries={queries} windowId={windowId} />;
@@ -857,7 +855,7 @@ export function RenderNodes({ nodes, globals, windowId, queries, statuses, inlin
               globals={globals}
               windowId={windowId}
               queries={queries}
-              statuses={statuses}
+              errors={errors}
               inline
               debug={debug}
             />
@@ -872,7 +870,7 @@ export function RenderNodes({ nodes, globals, windowId, queries, statuses, inlin
           globals={globals}
           windowId={windowId}
           queries={queries}
-          statuses={statuses}
+          errors={errors}
           debug={debug}
         />
       );

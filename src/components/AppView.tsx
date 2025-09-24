@@ -134,7 +134,7 @@ export function AppView({ id }: { id: string }) {
     return () => queryRuntime.stop(id)
   }, [id, compiled, compileError, globals.user?.pubkey, relays, docState, forms, launchIntent, hypersauceClient, queryEpoch, formsReady, stateReady])
 
-  const { data: queriesForWindow, statuses: queryStatusMap } = useQuerySnapshotState(queryStreams, id, !!debug)
+  const { data: queriesForWindow, errors: queryErrors } = useQueryStreamData(queryStreams, id, !!debug)
 
   if (compileError) {
     return (
@@ -150,31 +150,38 @@ export function AppView({ id }: { id: string }) {
     return <div className="p-4 text-sm text-red-800 bg-red-50 border border-red-200 rounded">Document unavailable.</div>;
   }
 
-  return <RenderNodes nodes={nodes} globals={globals} windowId={id} queries={queriesForWindow} statuses={queryStatusMap} debug={debug} />;
+  return <RenderNodes nodes={nodes} globals={globals} windowId={id} queries={queriesForWindow} errors={queryErrors} debug={debug} />;
 }
-
-type QueryStatus = 'loading' | 'ready' | 'error';
-
-function useQuerySnapshotState(
+function useQueryStreamData(
   streams: Record<string, any> | undefined,
   windowId: string,
   debug: boolean,
-): { data: Record<string, any>; statuses: Record<string, QueryStatus> } {
-  const [state, setState] = useState<{ data: Record<string, any>; statuses: Record<string, QueryStatus> }>({ data: {}, statuses: {} })
+): { data: Record<string, any>; errors: Record<string, string> } {
+  const [data, setData] = useState<Record<string, any>>({})
+  const [errors, setErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {
     const entries = Object.entries(streams || {})
-    setState(prev => {
-      const nextData: Record<string, any> = {}
-      const nextStatuses: Record<string, QueryStatus> = {}
-      for (const [name] of entries) {
-        nextData[name] = Object.prototype.hasOwnProperty.call(prev.data, name) ? prev.data[name] : []
-        nextStatuses[name] = prev.statuses[name] ?? 'loading'
-      }
-      return { data: nextData, statuses: nextStatuses }
-    })
+    if (!entries.length) {
+      setData({})
+      setErrors({})
+      return
+    }
 
-    if (entries.length === 0) return () => {}
+    setData(prev => {
+      const next: Record<string, any> = {}
+      for (const [name] of entries) {
+        next[name] = Object.prototype.hasOwnProperty.call(prev, name) ? prev[name] : []
+      }
+      return next
+    })
+    setErrors(prev => {
+      const next: Record<string, string> = {}
+      for (const [name] of entries) {
+        if (prev[name]) next[name] = prev[name]
+      }
+      return next
+    })
 
     const subs = entries
       .map(([name, stream]) => {
@@ -185,19 +192,17 @@ function useQuerySnapshotState(
               const preview = Array.isArray(value) ? { length: value.length } : value
               console.debug(`[AppView:${windowId}] next ${name}`, preview)
             }
-            setState(prev => ({
-              data: { ...prev.data, [name]: value },
-              statuses: { ...prev.statuses, [name]: 'ready' },
-            }))
+            setData(prev => ({ ...prev, [name]: value }))
+            setErrors(prev => {
+              if (!prev[name]) return prev
+              const { [name]: _, ...rest } = prev
+              return rest
+            })
           },
           error: (err: any) => {
             const message = err instanceof Error ? err.message : String(err)
             if (debug) console.warn(`[AppView:${windowId}] error ${name}`, err)
-            setState(prev => ({
-              data: prev.data,
-              statuses: { ...prev.statuses, [name]: 'error' },
-            }))
-            console.warn('[Hypersauce] query stream error', name, message)
+            setErrors(prev => ({ ...prev, [name]: message }))
           },
         })
       })
@@ -210,7 +215,7 @@ function useQuerySnapshotState(
     }
   }, [streams, windowId, debug])
 
-  return state
+  return { data, errors }
 }
 
 export function parseFrontmatterName(doc: string): string | undefined {
