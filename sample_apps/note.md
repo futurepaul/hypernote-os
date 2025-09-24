@@ -58,7 +58,7 @@ as: pair
 ```vstack.start
 width: 464px
 ```
-__[{{ (pair[1].display_name || pair[1].name) || pair[0].pubkey }}](nostr:{{ pair[0].npub || pair[0].pubkey }})__ · _{{ pair[0].created_at | format_date:datetime }}_
+__[{{ pair[1].display_name || pair[1].name || pair[0].pubkey }}](nostr:{{ pair[0].npub || pair[0].pubkey }})__ · _{{ pair[0].created_at | format_date:datetime }}_
 
 ```note
 event: pair[0]
