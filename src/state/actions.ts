@@ -46,6 +46,47 @@ type SystemActionArgs = {
 type SystemActionHandler = (args: SystemActionArgs) => Promise<any> | void
 
 const systemActionHandlers: Record<string, SystemActionHandler> = {
+  copy_to_clipboard: async ({ payload, scope }) => {
+    const text = coerceClipboardText(payload ?? scope?.globals?.payload);
+    if (!text) {
+      console.warn('@copy_to_clipboard: missing text payload');
+      return;
+    }
+
+    const trimmed = text.trim();
+    if (!trimmed) {
+      console.warn('@copy_to_clipboard: empty text payload');
+      return;
+    }
+
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(trimmed);
+        return;
+      } catch (err) {
+        console.warn('@copy_to_clipboard: navigator.clipboard failed', err);
+      }
+    }
+
+    if (typeof document !== 'undefined') {
+      try {
+        const textarea = document.createElement('textarea');
+        textarea.value = trimmed;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'absolute';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        return;
+      } catch (err) {
+        console.warn('@copy_to_clipboard: fallback copy failed', err);
+      }
+    }
+
+    console.warn('@copy_to_clipboard: no clipboard API available');
+  },
   set_pubkey: async ({ payload, scope, store }) => {
     const pubkey = resolvePubkeyCandidate(payload, scope)
     if (!pubkey) return
@@ -393,6 +434,27 @@ function interpolateActionValue(value: any, scope: ActionScope): any {
 
 function interpolateActionString(value: string, scope: ActionScope): any {
   return interpolateTemplate(value, scope)
+}
+
+function coerceClipboardText(input: unknown): string | null {
+  if (input === undefined || input === null) return null
+  if (typeof input === 'string') return input
+  if (typeof input === 'number' || typeof input === 'boolean') return String(input)
+  if (Array.isArray(input)) {
+    const joined = input.map(item => (typeof item === 'string' ? item : '')).filter(Boolean).join('\n')
+    return joined ? joined : JSON.stringify(input)
+  }
+  if (typeof input === 'object') {
+    const objectInput = input as Record<string, any>
+    const candidate = objectInput.text ?? objectInput.value ?? objectInput.naddr ?? objectInput.id
+    if (typeof candidate === 'string') return candidate
+    try {
+      return JSON.stringify(input)
+    } catch {
+      return null
+    }
+  }
+  return null
 }
 
 function coerceEventShape(event: Record<string, any>) {

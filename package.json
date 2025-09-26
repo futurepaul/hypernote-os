@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "bun-plugin-tailwind": "^0.0.15",
-    "hypersauce": "file:../hypersauce",
+    "hypersauce": "git+https://github.com/futurepaul/hypersauce.git#280163781f8da49ba4d1a4651ed12201ab0bb5fd",
     "jotai": "^2.9.3",
     "nostr-tools": "^2.7.2",
     "overtype": "^1.2.6",

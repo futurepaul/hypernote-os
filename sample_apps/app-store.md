@@ -64,6 +64,12 @@ payload:
 ```
 
 ```button
+text: Copy naddr
+action: system.copy_to_clipboard
+payload: "{{ app[0].naddr }}"
+```
+
+```button
 text: View raw
 action: system.switch_app
 payload:
